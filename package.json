@@ -1,0 +1,18 @@
+{
+  "name": "unicore-vault-contracts",
+  "version": "1.0.0",
+  "description": "UniCore Vault Smart Contracts",
+  "main": "index.js",
+  "scripts": {
+    "chain": "npm run chain",
+    "compile": "truffle compile",
+    "migrate": "npm run deploy",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "uvault.finance",
+  "license": "MIT",
+  "dependencies": {
+    "solc": "^0.6.0",
+    "truffle": "^5.1.48"
+  }
+}
