@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: WHO GIVES A FUCK?? 
 //but hey.. thanks to Zeppelin and MIT, you guys rock!!
 
-pragma solidity >= 0.6.0;
+pragma solidity >= 0.6.6;
 
 import "./UniCore_Libraries.sol";
 import "./UniCore_Interfaces.sol";

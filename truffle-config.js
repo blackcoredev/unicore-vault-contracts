@@ -27,7 +27,7 @@ module.exports = {
   },
   compilers: {
     solc: {
-      version: "0.6.0", // DeFiat v1 smart contract uses this solc version
+      version: "0.6.6", // DeFiat v1 smart contract uses this solc version
     },
   },
 };
