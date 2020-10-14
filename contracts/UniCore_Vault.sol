@@ -170,7 +170,7 @@ contract UniCore_Vault {
     //payout of UniCore Rewards, uses SafeUnicoreTransfer
     function updateAndPayOutPending(uint256 _pid, address user) internal {
         
-        updatePool(_pid);
+        massUpdatePools();
 
         uint256 pending = pendingUniCore(_pid, user);
 
@@ -201,7 +201,7 @@ contract UniCore_Vault {
     }
     
     uint256 private UniCoreBalance;
-    function updateRewards() external onlyUniCore {  //function addPendingRewards(uint256  for CORE
+    function updateRewards() external onlyUniCore {  //function addPendingRewards(uint256 _) for CORE
         uint256 newRewards = IERC20(UniCore).balanceOf(address(this)).sub(UniCoreBalance); //delta vs previous balanceOf
 
         if(newRewards > 0) {
@@ -209,7 +209,6 @@ contract UniCore_Vault {
             pendingRewards = pendingRewards.add(newRewards);
             rewardsInThisEpoch = rewardsInThisEpoch.add(newRewards);
         }
-        
     }
 
 //==================================================================================================================================
