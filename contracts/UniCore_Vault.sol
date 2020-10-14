@@ -178,7 +178,6 @@ contract UniCore_Vault {
     }
     
     
-
     // Safe UniCore transfer function, Manages rounding errors.
     function safeUniCoreTransfer(address _to, uint256 _amount) internal {   //TODO = pass internal
         if(_amount == 0) return;
@@ -187,8 +186,8 @@ contract UniCore_Vault {
         if (_amount >= UniCoreBal) { IERC20(UniCore).transfer(_to, UniCoreBal);} 
         else { IERC20(UniCore).transfer(_to, _amount);}
 
-        UniCoreBalance = IERC20(UniCore).balanceOf(address(this));
         transferTreasuryFees(); //adds unecessary gas for users, team can trigger the function manually
+        UniCoreBalance = IERC20(UniCore).balanceOf(address(this));
     }
 
 //external call from token
@@ -202,7 +201,7 @@ contract UniCore_Vault {
     }
     
     uint256 private UniCoreBalance;
-    function updateRewards() external onlyUniCore {
+    function updateRewards() external onlyUniCore {  //function addPendingRewards(uint256  for CORE
         uint256 newRewards = IERC20(UniCore).balanceOf(address(this)).sub(UniCoreBalance); //delta vs previous balanceOf
 
         if(newRewards > 0) {
@@ -210,10 +209,7 @@ contract UniCore_Vault {
             pendingRewards = pendingRewards.add(newRewards);
             rewardsInThisEpoch = rewardsInThisEpoch.add(newRewards);
         }
-            
-    //managing overflow
-        if(pendingRewards > IERC20(UniCore).balanceOf(address(this))){pendingRewards = IERC20(UniCore).balanceOf(address(this));} // maxing the rewards = token balance
-        if(rewardsInThisEpoch > IERC20(UniCore).balanceOf(address(this))){rewardsInThisEpoch = IERC20(UniCore).balanceOf(address(this));} // maxing the rewards = token balance
+        
     }
 
 //==================================================================================================================================
