@@ -31,7 +31,7 @@ contract UniCore_Vault {
     
 //POOL METRICS
     struct PoolInfo {
-        address token;                // Address of staked token contract.
+        address stakedToken;                // Address of staked token contract.
         uint256 allocPoint;           // How many allocation points assigned to this pool. UniCores to distribute per block. (ETH = 2.3M blocks per year)
         uint256 accUniCorePerShare;   // Accumulated UniCores per share, times 1e18. See below.
         bool withdrawable;            // Is this pool withdrawable or not
@@ -59,10 +59,11 @@ contract UniCore_Vault {
     constructor() public {
 
         UniCore = address(0xBC935114084188636d7C854f49f03F0A85B8FDF1);
-        Treasury1 = address(0xF4D7a0E8a68345442172F45cAbD272c25320AA96); //TESTNET
         
+        Treasury1 = address(0xF4D7a0E8a68345442172F45cAbD272c25320AA96); //TESTNET
         Treasury2 = address(0x397f9694Ca604c2bbdfB5c86227A64853940FB49); //stpd 
         Treasury3 = address(0x397f9694Ca604c2bbdfB5c86227A64853940FB49); //QS 
+        
         treasuryFee = 500; //5%
         
         contractStartBlock = block.number;
@@ -93,19 +94,19 @@ contract UniCore_Vault {
  //set stuff (govenrors)
 
     // Add a new token pool. Can only be called by governors.
-    function addPool( uint256 _allocPoint, address _token, bool _withUpdate, bool _withdrawable) public governanceLevel(2) {
+    function addPool( uint256 _allocPoint, address _stakedToken, bool _withUpdate, bool _withdrawable) public governanceLevel(2) {
         if (_withUpdate) { massUpdatePools();}
 
         uint256 length = poolInfo.length;
         for (uint256 pid = 0; pid < length; ++pid) {
-            require(poolInfo[pid].token != _token,"Error pool already added");
+            require(poolInfo[pid].stakedToken != _stakedToken,"Error pool already added");
         }
 
         totalAllocPoint = totalAllocPoint.add(_allocPoint); //pre-allocation
 
         poolInfo.push(
             PoolInfo({
-                token: _token,
+                stakedToken: _stakedToken,
                 allocPoint: _allocPoint,
                 accUniCorePerShare: 0,
                 withdrawable : _withdrawable
@@ -142,7 +143,7 @@ contract UniCore_Vault {
     function updatePool(uint256 _pid) internal returns (uint256 UniCoreRewardWhole) {
         PoolInfo storage pool = poolInfo[_pid];
 
-        uint256 tokenSupply = IERC20(pool.token).balanceOf(address(this));
+        uint256 tokenSupply = IERC20(pool.stakedToken).balanceOf(address(this));
         if (tokenSupply == 0) { // avoids division by 0 errors
             return 0;
         }
@@ -224,7 +225,7 @@ contract UniCore_Vault {
         updateAndPayOutPending(_pid, msg.sender); //Transfer pending tokens, updates the pools 
 
         //Transfer the amounts from user
-        IERC20(pool.token).transferFrom(msg.sender, address(this), _amount);
+        IERC20(pool.stakedToken).transferFrom(msg.sender, address(this), _amount);
         user.amount = user.amount.add(_amount);
 
         //Finalize
@@ -250,7 +251,7 @@ contract UniCore_Vault {
 
         if(_amount > 0) {
             user.amount = user.amount.sub(_amount);
-            IERC20(pool.token).transfer(address(to), _amount);
+            IERC20(pool.stakedToken).transfer(address(to), _amount);
         }
         user.rewardPaid = user.amount.mul(pool.accUniCorePerShare).div(1e18);
 
