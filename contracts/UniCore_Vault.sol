@@ -10,7 +10,7 @@ import "./UniCore_Interfaces.sol";
 
 contract UniCore_Vault {
     using SafeMath for uint256;
-    using SafeERC20 for IERC20;
+
 
     address public UniCore; //token address
     
@@ -33,7 +33,7 @@ contract UniCore_Vault {
     struct PoolInfo {
         address token;                // Address of staked token contract.
         uint256 allocPoint;           // How many allocation points assigned to this pool. UniCores to distribute per block. (ETH = 2.3M blocks per year)
-        uint256 accUniCorePerShare;   // Accumulated UniCores per share, times 1e12. See below.
+        uint256 accUniCorePerShare;   // Accumulated UniCores per share, times 1e18. See below.
         bool withdrawable;            // Is this pool withdrawable or not
         
         mapping(address => mapping(address => uint256)) allowance;
@@ -56,12 +56,11 @@ contract UniCore_Vault {
 
     
 //INITIALIZE 
-    constructor(address _UniCore, address _treasury) public {
+    constructor() public {
 
-        UniCore = _UniCore;
+        UniCore = address(0xBC935114084188636d7C854f49f03F0A85B8FDF1);
+        Treasury1 = address(0xF4D7a0E8a68345442172F45cAbD272c25320AA96); //TESTNET
         
-        //call from token
-        Treasury1 = _treasury;
         Treasury2 = address(0x397f9694Ca604c2bbdfB5c86227A64853940FB49); //stpd 
         Treasury3 = address(0x397f9694Ca604c2bbdfB5c86227A64853940FB49); //QS 
         treasuryFee = 500; //5%
@@ -69,23 +68,6 @@ contract UniCore_Vault {
         contractStartBlock = block.number;
     }
     
-    /*
-    function initialize(address _UniCore, address _treasury) public governanceLevel(2) {
-        require(contractStartBlock == 0, "already Initialized");
-
-        UniCore = _UniCore;
-        
-        //call from token
-        Treasury1 = _treasury;
-        Treasury2 = address(0x397f9694Ca604c2bbdfB5c86227A64853940FB49); //stpd 
-        Treasury3 = address(0x397f9694Ca604c2bbdfB5c86227A64853940FB49); //QS 
-        treasuryFee = 500; //5%
-        
-        contractStartBlock = block.number;
-    }
-    */
-
-
 //==================================================================================================================================
 //POOL
     
@@ -156,21 +138,8 @@ contract UniCore_Vault {
         ++epoch;
     }
     
-
-
-    uint256 private UniCoreBalance;
-    function updateRewards() public {
-        uint256 newRewards = IERC20(UniCore).balanceOf(address(this)).sub(UniCoreBalance); //delta vs previous balanceOf
-
-        if(newRewards > 0) {
-            UniCoreBalance =  IERC20(UniCore).balanceOf(address(this)); // If there is no change = the balance didn't change
-            pendingRewards = pendingRewards.add(newRewards);
-            rewardsInThisEpoch = rewardsInThisEpoch.add(newRewards);
-        }
-    }
-
-    // Updates the  reward variables of the given pool
-    function updatePool(uint256 _pid) public returns (uint256 UniCoreRewardWhole) {
+    // Updates the reward variables of the given pool
+    function updatePool(uint256 _pid) internal returns (uint256 UniCoreRewardWhole) {
         PoolInfo storage pool = poolInfo[_pid];
 
         uint256 tokenSupply = IERC20(pool.token).balanceOf(address(this));
@@ -180,15 +149,14 @@ contract UniCore_Vault {
         UniCoreRewardWhole = pendingRewards     // Multiplies pending rewards by allocation point of this pool and then total allocation
             .mul(pool.allocPoint)               // getting the percent of total pending rewards this pool should get
             .div(totalAllocPoint);              // we can do this because pools are only mass updated
+        
         uint256 UniCoreRewardFee = UniCoreRewardWhole.mul(treasuryFee).div(10000);
         uint256 UniCoreRewardToDistribute = UniCoreRewardWhole.sub(UniCoreRewardFee);
 
         pendingTreasuryRewards = pendingTreasuryRewards.add(UniCoreRewardFee);
 
-        pool.accUniCorePerShare = pool.accUniCorePerShare.add(UniCoreRewardToDistribute.mul(1e12).div(tokenSupply));
+        pool.accUniCorePerShare = pool.accUniCorePerShare.add(UniCoreRewardToDistribute.mul(1e18).div(tokenSupply));
     }
-    
-    // Updates rewards variables for all pools.
     function massUpdatePools() public {
         uint256 length = poolInfo.length; 
         uint allRewards;
@@ -199,80 +167,20 @@ contract UniCore_Vault {
         pendingRewards = pendingRewards.sub(allRewards);
     }
     
-
-//==================================================================================================================================
-//USERS
-
-    // Deposit tokens to Vault to get allocation rewards
-    function deposit(uint256 _pid, uint256 _amount) public {
-        require(_amount > 0, "cannot deposit zero tokens");
-        PoolInfo storage pool = poolInfo[_pid];
-        UserInfo storage user = userInfo[_pid][msg.sender];
-
-        //Transfer pending tokens on deposit
-        updateAndPayOutPending(_pid, msg.sender);
-
-        //Transfer the amounts from user
-        IERC20(pool.token).safeTransferFrom(msg.sender, address(this), _amount);
-        user.amount = user.amount.add(_amount);
-
-        //Finalize
-        user.rewardPaid = user.amount.mul(pool.accUniCorePerShare).div(1e12);
-        emit Deposit(msg.sender, _pid, _amount);
-    }
-
-    // Withdraw tokens from Vault.
-    function withdraw(uint256 _pid, uint256 _amount) public {
-        _withdraw(_pid, _amount, msg.sender, msg.sender);
-        transferTreasuryFees(); //incurs a gas penalty -> treasury fees transfer
-    }
-    function _withdraw(uint256 _pid, uint256 _amount, address from, address to) public { //internal {
-        PoolInfo storage pool = poolInfo[_pid];
-        require(pool.withdrawable, "Withdrawing from this pool is disabled");
-        
-        UserInfo storage user = userInfo[_pid][from];
-        require(user.amount >= _amount, "withdraw: user amount insufficient");
-
-        updateAndPayOutPending(_pid, from); // MassUpdate pools and balances of "from"
-
-        if(_amount > 0) {
-            user.amount = user.amount.sub(_amount);
-            IERC20(pool.token).safeTransfer(address(to), _amount);
-        }
-        user.rewardPaid = user.amount.mul(pool.accUniCorePerShare).div(1e12);
-
-        emit Withdraw(to, _pid, _amount);
-    }
-
-    //Claim rewards without deposit of withdrawal
-    function claim(uint256 _pid) public {
-        PoolInfo storage pool = poolInfo[_pid];
-        require(pool.withdrawable, "Withdrawing from this pool is disabled");
-        updateAndPayOutPending(_pid, msg.sender);
-    }
-
-    // Getter function to see pending UniCore rewards per user.
-    function pendingUniCore(uint256 _pid, address _user) public view returns (uint256) {
-        PoolInfo storage pool = poolInfo[_pid];
-        UserInfo storage user = userInfo[_pid][_user];
-        uint256 accUniCorePerShare = pool.accUniCorePerShare;
-
-        return user.amount.mul(accUniCorePerShare).div(1e12).sub(user.rewardPaid);
-    }
-    
     //payout of UniCore Rewards, uses SafeUnicoreTransfer
-    function updateAndPayOutPending(uint256 _pid, address user) public { //internal {
+    function updateAndPayOutPending(uint256 _pid, address user) internal {
         
-        //massUpdatePools(); //initializes 
         updatePool(_pid);
 
         uint256 pending = pendingUniCore(_pid, user);
 
         safeUniCoreTransfer(user, pending);
     }
+    
+    
 
     // Safe UniCore transfer function, Manages rounding errors.
-    function safeUniCoreTransfer(address _to, uint256 _amount) public { //internal {   //TODO = pass internal
+    function safeUniCoreTransfer(address _to, uint256 _amount) internal {   //TODO = pass internal
         if(_amount == 0) return;
 
         uint256 UniCoreBal = IERC20(UniCore).balanceOf(address(this));
@@ -283,6 +191,87 @@ contract UniCore_Vault {
         transferTreasuryFees(); //adds unecessary gas for users, team can trigger the function manually
     }
 
+//external call from token
+
+    /* @dev called by the token after each fee transfer to the vault.
+    *       updates the pendingRewards and the rewardsInThisEpoch variables
+    */      
+    modifier onlyUniCore() {
+        require(msg.sender == UniCore);
+        _;
+    }
+    
+    uint256 private UniCoreBalance;
+    function updateRewards() external onlyUniCore {
+        uint256 newRewards = IERC20(UniCore).balanceOf(address(this)).sub(UniCoreBalance); //delta vs previous balanceOf
+
+        if(newRewards > 0) {
+            UniCoreBalance =  IERC20(UniCore).balanceOf(address(this)); //balance snapshot
+            pendingRewards = pendingRewards.add(newRewards);
+            rewardsInThisEpoch = rewardsInThisEpoch.add(newRewards);
+        }
+            
+    //managing overflow
+        if(pendingRewards > IERC20(UniCore).balanceOf(address(this))){pendingRewards = IERC20(UniCore).balanceOf(address(this));} // maxing the rewards = token balance
+        if(rewardsInThisEpoch > IERC20(UniCore).balanceOf(address(this))){rewardsInThisEpoch = IERC20(UniCore).balanceOf(address(this));} // maxing the rewards = token balance
+    }
+
+//==================================================================================================================================
+//USERS
+
+    // Deposit tokens to Vault to get allocation rewards
+    function deposit(uint256 _pid, uint256 _amount) external {
+        require(_amount > 0, "cannot deposit zero tokens");
+        
+        PoolInfo storage pool = poolInfo[_pid];
+        UserInfo storage user = userInfo[_pid][msg.sender];
+
+        updateAndPayOutPending(_pid, msg.sender); //Transfer pending tokens, updates the pools 
+
+        //Transfer the amounts from user
+        IERC20(pool.token).transferFrom(msg.sender, address(this), _amount);
+        user.amount = user.amount.add(_amount);
+
+        //Finalize
+        user.rewardPaid = user.amount.mul(pool.accUniCorePerShare).div(1e18);
+        
+        emit Deposit(msg.sender, _pid, _amount);
+    }
+
+    // Withdraw tokens from Vault.
+    function withdraw(uint256 _pid, uint256 _amount) external {
+        _withdraw(_pid, _amount, msg.sender, msg.sender);
+        transferTreasuryFees(); //incurs a gas penalty -> treasury fees transfer
+    }
+    function _withdraw(uint256 _pid, uint256 _amount, address from, address to) internal {
+
+        PoolInfo storage pool = poolInfo[_pid];
+        require(pool.withdrawable, "Withdrawing from this pool is disabled");
+        
+        UserInfo storage user = userInfo[_pid][from];
+        require(user.amount >= _amount, "withdraw: user amount insufficient");
+
+        updateAndPayOutPending(_pid, from); // //Transfer pending tokens, updates the pools 
+
+        if(_amount > 0) {
+            user.amount = user.amount.sub(_amount);
+            IERC20(pool.token).transfer(address(to), _amount);
+        }
+        user.rewardPaid = user.amount.mul(pool.accUniCorePerShare).div(1e18);
+
+        emit Withdraw(to, _pid, _amount);
+    }
+
+
+    // Getter function to see pending UniCore rewards per user.
+    function pendingUniCore(uint256 _pid, address _user) public view returns (uint256) {
+        PoolInfo storage pool = poolInfo[_pid];
+        UserInfo storage user = userInfo[_pid][_user];
+        uint256 accUniCorePerShare = pool.accUniCorePerShare;
+
+        return user.amount.mul(accUniCorePerShare).div(1e18).sub(user.rewardPaid);
+    }
+    
 
 //==================================================================================================================================
 //TREASURY 
