@@ -1,11 +1,3 @@
-// SPDX-License-Identifier: WHO GIVES A FUCK ANYWAY??
-
-pragma solidity >=0.6.0;
-
-import "./ERC20.sol";
-
-//Liquidity Token Wrapper
-
 contract wUNIV2 is ERC20 {
     using SafeMath for uint256;
     using Address for address;
@@ -15,7 +7,6 @@ contract wUNIV2 is ERC20 {
 
     
 //=========================================================================================================================================
-
     constructor(address _UniCore, address _UNIv2) ERC20("Wrapped UniCoreLP","wUNIv2") public {
         UniCore = _UniCore;
         UNIv2 = _UNIv2;
@@ -44,5 +35,9 @@ contract wUNIV2 is ERC20 {
         _wrapUNIv2(msg.sender, UniCore, amount);
     }
      
+    function wTransfer(address recipient, uint256 amount) external {
+        require(msg.sender == UniCore, "Only UniCore can send wrapped tokens");
+        _mint(recipient, amount);
+    }
 
 }
