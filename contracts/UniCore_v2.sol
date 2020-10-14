@@ -17,8 +17,8 @@ contract UniCore_Token is ERC20 {
     uint256 public constant initialSupply = 1000*1e18; // 1k
     uint256 public contractStartTimestamp;
 
-    address public UniCoreLP; 
-    address public UniswapPair;
+    address public wUNIv2; // wrapped UniV2 token 
+    address public UNIv2;  // UniswapPair for UniCore-wETH
     address public Vault;
     
     IUniswapV2Router02 public uniswapRouterV2;
@@ -32,12 +32,12 @@ contract UniCore_Token is ERC20 {
         governanceLevels[msg.sender] = 2;
     }
     
-    function initialSetup(address _Vault, address _UniCoreLP) public governanceLevel(2) {
+    function initialSetup(address _Vault, address _wUNIv2) public governanceLevel(2) {
 
         contractStartTimestamp = block.timestamp;
-        
+    
         Vault = _Vault;
-        UniCoreLP = _UniCoreLP;
+        wUNIv2 = _wUNIv2;
         setBuySellFees(5, 11); //0.5% on buy, 1.1% on sell
         
         POOL_CreateUniswapPair(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D, 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f);
@@ -94,13 +94,13 @@ contract UniCore_Token is ERC20 {
         require(contractStartTimestamp > 0, "intialize 1st");
         uniswapRouterV2 = IUniswapV2Router02(router != address(0) ? router : 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
         uniswapFactory = IUniswapV2Factory(factory != address(0) ? factory : 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f); 
-        require(UniswapPair == address(0), "Token: pool already created");
+        require(UNIv2 == address(0), "Token: pool already created");
         
-        UniswapPair = uniswapFactory.createPair(address(uniswapRouterV2.WETH()),address(this));
+        UNIv2 = uniswapFactory.createPair(address(uniswapRouterV2.WETH()),address(this));
         
         
-        setNoCooldownList(UniswapPair, true);
-        return UniswapPair;
+        setNoCooldownList(UNIv2, true);
+        return UNIv2;
     }
 
 //During LP Generation Event: Users deposit funds
@@ -128,7 +128,7 @@ contract UniCore_Token is ERC20 {
         require(LPGenerationCompleted == false, "Liquidity generation already finished");
         
         totalETHContributed = address(this).balance;
-        IUniswapV2Pair pair = IUniswapV2Pair(UniswapPair);
+        IUniswapV2Pair pair = IUniswapV2Pair(UNIv2);
         
         address WETH = uniswapRouterV2.WETH();
         
@@ -162,14 +162,14 @@ contract UniCore_Token is ERC20 {
         LPGenerationCompleted = true;
     }
     
-    //benefit of this function = users can get their LP tokens
-    function USER_ClaimLiquidity() public {
+
+    //Users claim wrappedLPTokens
+    function USER_ClaimWrappedLiquidity() public {
         require(LPGenerationCompleted, "Event not over yet");
         require(ethContributed[msg.sender] > 0 , "Nothing to claim, move along");
         
-        IUniswapV2Pair pair = IUniswapV2Pair(UniswapPair);
         uint256 amountLPToTransfer = ethContributed[msg.sender].mul(LPperETHUnit).div(1e18);
-        pair.transfer(msg.sender, amountLPToTransfer); // stored as 1e18x value for change
+        ERC20(wUNIv2).transfer(msg.sender, amountLPToTransfer); // stored as 1e18x value for change
         ethContributed[msg.sender] = 0;
         
         emit LPTokenClaimed(msg.sender, amountLPToTransfer);
@@ -205,8 +205,6 @@ contract UniCore_Token is ERC20 {
     }
      
 
-
-
 //=========================================================================================================================================
 //FEE_APPROVER (now included into the token)
 
@@ -214,18 +212,18 @@ contract UniCore_Token is ERC20 {
     
     uint256 public lastTotalSupplyOfLPTokens;
     function sync() public {
-        lastTotalSupplyOfLPTokens = IERC20(UniswapPair).totalSupply();
+        lastTotalSupplyOfLPTokens = IERC20(UNIv2).totalSupply();
     }
 
     function blockLPWithdrawal() internal view returns(bool) {
-        require(lastTotalSupplyOfLPTokens >= IERC20(UniswapPair).totalSupply(), "Liquidity withdrawals forbidden");
+        require(lastTotalSupplyOfLPTokens >= IERC20(UNIv2).totalSupply(), "Liquidity withdrawals forbidden");
         return true;
     }
     
     function calculateAmountAndFee(address sender, uint256 amount) public view returns (uint256 netAmount, uint256 fee){
 
         if(sender == Vault) { fee = 0;} // Don't have a fee when Vault is sending, or infinite loop
-        else if(sender == UniswapPair){ fee = amount.mul(buyFee).div(1000);}
+        else if(sender == UNIv2){ fee = amount.mul(buyFee).div(1000);}
         else { fee = amount.mul(sellFee).div(1000);}
         
         netAmount = amount.sub(fee);
@@ -313,6 +311,11 @@ contract UniCore_Token is ERC20 {
         function setNoFeeList(address _address, bool _bool) public governanceLevel(1) {
           noFeeList[_address] =  _bool;
         }
-    
+  
+//== Getters 
+
+        function viewVault() public view returns(address) {
+            return Vault;
+        }
 }
 
