@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: WHO GIVES A FUCK ANYWAY??
 
-pragma solidity >=0.6.0;
+pragma solidity ^0.6.6;
 
 //UNICORE
     interface IUniCore {
@@ -8,6 +8,12 @@ pragma solidity >=0.6.0;
         function viewVault() external view returns(address);
     }
 
+//wUNIv2 wrappped UNIv2
+    interface IwUNIv2 {
+        function wrapUNIv2(uint256 amount) external;
+        function wTransfer(address recipient, uint256 amount) external;
+    }
+    
 //VAULT
     interface IVault {
         function updateRewards() external;
