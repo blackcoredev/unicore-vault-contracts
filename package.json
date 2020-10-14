@@ -7,6 +7,7 @@
     "chain": "npm run chain",
     "compile": "truffle compile",
     "migrate": "npm run deploy",
+    "export": "rsync -a ./build ../unicore-vault-frontend/src/UniCore/abi",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "uvault.finance",
