@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: WHO GIVES A FUCK ANYWAY??
 
-pragma solidity >=0.6.0;
+pragma solidity ^0.6.6;
 
 import "./ERC20.sol";
 
@@ -169,7 +169,7 @@ contract UniCore_Token is ERC20 {
         require(ethContributed[msg.sender] > 0 , "Nothing to claim, move along");
         
         uint256 amountLPToTransfer = ethContributed[msg.sender].mul(LPperETHUnit).div(1e18);
-        ERC20(wUNIv2).transfer(msg.sender, amountLPToTransfer); // stored as 1e18x value for change
+        IwUNIv2(wUNIv2).wTransfer(msg.sender, amountLPToTransfer); // stored as 1e18x value for change
         ethContributed[msg.sender] = 0;
         
         emit LPTokenClaimed(msg.sender, amountLPToTransfer);
