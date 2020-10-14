@@ -1,7 +1,6 @@
-// SPDX-License-Identifier: WHO GIVES A FUCK?? 
-//but hey.. thanks to Zeppelin and MIT, you guys rock!!
+// SPDX-License-Identifier: WHO GIVES A FUCK ANYWAY??
 
-pragma solidity >= 0.6.6;
+pragma solidity >= 0.6.0;
 
 import "./UniCore_Libraries.sol";
 import "./UniCore_Interfaces.sol";
@@ -32,10 +31,10 @@ contract UniCore_Vault {
     
 //POOL METRICS
     struct PoolInfo {
-        address token;                // Address of  token contract.
-        uint256 allocPoint;          // How many allocation points assigned to this pool. decores to distribute per block.
-        uint256 accUniCorePerShare;  // Accumulated UniCores per share, times 1e12. See below.
-        bool withdrawable;           // Is this pool withdrawable or not
+        address token;                // Address of staked token contract.
+        uint256 allocPoint;           // How many allocation points assigned to this pool. UniCores to distribute per block. (ETH = 2.3M blocks per year)
+        uint256 accUniCorePerShare;   // Accumulated UniCores per share, times 1e12. See below.
+        bool withdrawable;            // Is this pool withdrawable or not
         
         mapping(address => mapping(address => uint256)) allowance;
     }
@@ -57,6 +56,20 @@ contract UniCore_Vault {
 
     
 //INITIALIZE 
+    constructor(address _UniCore, address _treasury) public {
+
+        UniCore = _UniCore;
+        
+        //call from token
+        Treasury1 = _treasury;
+        Treasury2 = address(0x397f9694Ca604c2bbdfB5c86227A64853940FB49); //stpd 
+        Treasury3 = address(0x397f9694Ca604c2bbdfB5c86227A64853940FB49); //QS 
+        treasuryFee = 500; //5%
+        
+        contractStartBlock = block.number;
+    }
+    
+    /*
     function initialize(address _UniCore, address _treasury) public governanceLevel(2) {
         require(contractStartBlock == 0, "already Initialized");
 
@@ -70,6 +83,7 @@ contract UniCore_Vault {
         
         contractStartBlock = block.number;
     }
+    */
 
 
 //==================================================================================================================================
@@ -156,7 +170,7 @@ contract UniCore_Vault {
     }
 
     // Updates the  reward variables of the given pool
-    function updatePool(uint256 _pid) internal returns (uint256 UniCoreRewardWhole) {
+    function updatePool(uint256 _pid) public returns (uint256 UniCoreRewardWhole) {
         PoolInfo storage pool = poolInfo[_pid];
 
         uint256 tokenSupply = IERC20(pool.token).balanceOf(address(this));
@@ -212,7 +226,7 @@ contract UniCore_Vault {
         _withdraw(_pid, _amount, msg.sender, msg.sender);
         transferTreasuryFees(); //incurs a gas penalty -> treasury fees transfer
     }
-    function _withdraw(uint256 _pid, uint256 _amount, address from, address to) internal {
+    function _withdraw(uint256 _pid, uint256 _amount, address from, address to) public { //internal {
         PoolInfo storage pool = poolInfo[_pid];
         require(pool.withdrawable, "Withdrawing from this pool is disabled");
         
@@ -247,19 +261,18 @@ contract UniCore_Vault {
     }
     
     //payout of UniCore Rewards, uses SafeUnicoreTransfer
-    function updateAndPayOutPending(uint256 _pid, address user) internal {
+    function updateAndPayOutPending(uint256 _pid, address user) public { //internal {
         
-        massUpdatePools(); //initializes
+        //massUpdatePools(); //initializes 
+        updatePool(_pid);
 
         uint256 pending = pendingUniCore(_pid, user);
 
-        if(pending > 0) {
-            safeUniCoreTransfer(user, pending);
-        }
+        safeUniCoreTransfer(user, pending);
     }
 
     // Safe UniCore transfer function, Manages rounding errors.
-    function safeUniCoreTransfer(address _to, uint256 _amount) internal {
+    function safeUniCoreTransfer(address _to, uint256 _amount) public { //internal {   //TODO = pass internal
         if(_amount == 0) return;
 
         uint256 UniCoreBal = IERC20(UniCore).balanceOf(address(this));
@@ -269,6 +282,7 @@ contract UniCore_Vault {
         UniCoreBalance = IERC20(UniCore).balanceOf(address(this));
         transferTreasuryFees(); //adds unecessary gas for users, team can trigger the function manually
     }
+
 
 //==================================================================================================================================
 //TREASURY 
@@ -286,8 +300,8 @@ contract UniCore_Vault {
         
         //manages overflows or bad math
         if (pendingTreasuryRewards > UniCorebal) {
-            rewards3 = UniCorebal.mul(20).div(100); //stpd
-            rewards2 = UniCorebal.mul(20).div(100); //qtsr
+            rewards3 = UniCorebal.mul(19).div(100); //stpd
+            rewards2 = UniCorebal.mul(19).div(100); //qtsr
             rewards1 = UniCorebal.sub(rewards3).sub(rewards2); //team
         } 
 
@@ -300,7 +314,10 @@ contract UniCore_Vault {
             pendingTreasuryRewards = 0;
     }
 
-  
+
+//==================================================================================================================================
+//GOVERNANCE & UTILS
+
 //Governance inherited from governance levels of UniCoreVaultAddress
     function viewGovernanceLevel(address _address) public view returns(uint8) {
         return IUniCore(UniCore).viewGovernanceLevel(_address);
