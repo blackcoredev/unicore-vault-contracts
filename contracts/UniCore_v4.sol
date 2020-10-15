@@ -18,18 +18,25 @@ contract UniCore_Token is ERC20 {
     string private _symbol;
     uint8 private _decimals;
     uint256 public constant initialSupply = 1000*1e18; // 1k
+    
     mapping(address => uint256) private _balances;
     mapping(address => mapping(address => uint256)) private _allowances;
     
     //timeStamps
     uint256 public contractStart_Timestamp;
     uint256 public LPGCompleted_Timestamp;
-
+    uint256 public constant contributionPhase = 3 days;
+    uint256 public constant stackingPhase = 2 hours;
+    uint256 public constant emergencyPerdiod = 4 days;
+    
     //Tokenomics
     uint256 public totalLPTokensMinted;
     uint256 public totalETHContributed;
     uint256 public LPperETHUnit;
     mapping (address => uint)  public ethContributed;
+    uint256 public constant individualCap = 25*1e18;
+    uint256 public constant totalCap = 500*1e18;
+    
     
     //Ecosystem
     address public UniswapPair;
@@ -41,15 +48,11 @@ contract UniCore_Token is ERC20 {
 //=========================================================================================================================================
 
     constructor() ERC20("Unicore", "UNICORE") public {
- 
-        _mint(address(this), initialSupply); //tokens minted to the token contract.
-        
+        _mint(address(this), initialSupply);
         governanceLevels[msg.sender] = 2;
     }
     
     function initialSetup() public governanceLevel(2) {
-
-        contractStart_Timestamp = block.timestamp;
 
         setBuySellFees(5, 11); //0.5% on buy, 1.1% on sell
         
@@ -57,6 +60,34 @@ contract UniCore_Token is ERC20 {
         //0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D = UniswapV2Router02
         //0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f = UniswapV2Factory
     }
+    
+    //Pool UniSwap pair creation method (called by  initialSetup() )
+    function POOL_CreateUniswapPair(address router, address factory) internal returns (address) {
+        require(contractStart_Timestamp > 0, "intialize 1st");
+        
+        uniswapRouterV2 = IUniswapV2Router02(router != address(0) ? router : 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
+        uniswapFactory = IUniswapV2Factory(factory != address(0) ? factory : 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f); 
+        require(UniswapPair == address(0), "Token: pool already created");
+        
+        UniswapPair = uniswapFactory.createPair(address(uniswapRouterV2.WETH()),address(this));
+        
+        return UniswapPair;
+    }
+    
+    /* Once initialSetup has been invoked
+    * Team will create the Vault and the LP wrapper token
+    *  
+    * Only AFTER these 2 addresses have been created the users
+    * can start contributing in ETH
+    */
+    function secondarySetup(address _Vault, address _wUNIv2) public governanceLevel(2) {
+        require(Vault != address(0) && wUNIv2 != address(0), "Wrapper Token and Vault not Setup");
+        Vault = _Vault;
+        wUNIv2 = _wUNIv2;
+        
+        contractStart_Timestamp = block.timestamp;
+    }
+    
 
 //=========================================================================================================================================
     /* Liquidity generation logic
@@ -82,16 +113,15 @@ contract UniCore_Token is ERC20 {
 
     
     /* @dev List of modifiers used to differentiate the project phases
-     * ETH_ContributionPhase lets users send ETH to the token contract
-     * LGP_possible triggers after the contributionPhase duration
-     * Tradin_Possible: this modifiers prevent Unicore _transfer right
-     * after the LGE. It gives time for contributors to stake their 
-     * tokens before fees are generated.
+     *      ETH_ContributionPhase lets users send ETH to the token contract
+     *      LGP_possible triggers after the contributionPhase duration
+     *      Trading_Possible: this modifiers prevent Unicore _transfer right
+     *      after the LGE. It gives time for contributors to stake their 
+     *      tokens before fees are generated.
      */
-    uint256 contributionPhase = 3 days;
-    uint256 StackingPhase = 2 hours;
     
     modifier ETH_ContributionPhase() {
+        require(Vault != address(0) && wUNIv2 != address(0), "Wrapper Token and Vault not Setup");
         require(contractStart_Timestamp > 0);
         require(block.timestamp <= contractStart_Timestamp.add(contributionPhase));
         _;
@@ -107,19 +137,17 @@ contract UniCore_Token is ERC20 {
         _;
     }
     modifier Trading_Possible() {
-        require(block.timestamp > LPGCompleted_Timestamp.add(StackingPhase));
+        require(block.timestamp > LPGCompleted_Timestamp.add(stackingPhase));
         _;
     }
     
-    function liquidityGenerationOngoing() public view returns (bool) {
-        return contractStart_Timestamp.add(3 days) > block.timestamp;
-    }
-    
-    
 
+//=========================================================================================================================================
+  
     // Emergency drain in case of a bug
     function emergencyDrain24hAfterLiquidityGenerationEventIsDone() public governanceLevel(2) {
-        require(contractStart_Timestamp.add(4 days) < block.timestamp, "Liquidity generation grace period still ongoing"); // About 24h after liquidity generation happens
+        require(contractStart_Timestamp.add(emergencyPerdiod) < block.timestamp, "Liquidity generation grace period still ongoing"); // About 24h after liquidity generation happens
+        
         (bool success, ) = msg.sender.call{value:(address(this).balance)}("");
         require(success, "Transfer failed.");
        
@@ -127,29 +155,13 @@ contract UniCore_Token is ERC20 {
         _balances[address(this)] = 0;
     }
 
-
-//Pool UniSwap pair creation method (see InitialSetup() )
-    function POOL_CreateUniswapPair(address router, address factory) internal governanceLevel(2) returns (address) {
-        require(contractStart_Timestamp > 0, "intialize 1st");
-        uniswapRouterV2 = IUniswapV2Router02(router != address(0) ? router : 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
-        uniswapFactory = IUniswapV2Factory(factory != address(0) ? factory : 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f); 
-        require(UniswapPair == address(0), "Token: pool already created");
-        
-        UniswapPair = uniswapFactory.createPair(address(uniswapRouterV2.WETH()),address(this));
-        
-        
-        return UniswapPair;
-    }
-
 //During ETH_ContributionPhase: Users deposit funds
 
     //funds sent to TOKEN contract.
     function USER_PledgeLiquidity(bool agreesToTermsOutlinedInLiquidityGenerationParticipationAgreement) public payable ETH_ContributionPhase {
+        require(msg.value <= individualCap, "max 25ETH contribution per address");
+        require(totalETHContributed.add(msg.value) <= totalCap, "500 ETH Hard cap"); 
         
-        require(msg.value <= 25*1e18, "max 25ETH contribution per address");
-        require(totalETHContributed+msg.value <= 500*1e18, "500 ETH Hard cap"); 
-        
-        require(liquidityGenerationOngoing(), "Liquidity Generation Event over");
         require(agreesToTermsOutlinedInLiquidityGenerationParticipationAgreement, "No agreement provided");
         
         ethContributed[msg.sender] = ethContributed[msg.sender].add(msg.value);
@@ -158,21 +170,18 @@ contract UniCore_Token is ERC20 {
     }
     
     function USER_UNPledgeLiquidity() public ETH_ContributionPhase {
-        require(liquidityGenerationOngoing(), "Liquidity Generation Event over");
-        
         uint256 _amount = ethContributed[msg.sender];
+        ethContributed[msg.sender] = 0;
         transfer(msg.sender, _amount);
         totalETHContributed = totalETHContributed.sub(_amount);
     }
 
 
-//After ETH_ContributionPhase: Pool can add liquidity.
+// After ETH_ContributionPhase: Pool can create liquidity.
+// Vault and wrapped UNIv2 contracts need to be setup in advance.
 
-    function POOL_CreateLiquidity(address _Vault, address _wUNIv2) public LGE_Possible {
-        Vault = _Vault;
-        wUNIv2 = _wUNIv2;
-        require(Vault != address(0) && wUNIv2 != address(0), "Wrapper Token and Vault not Setup");
-        
+    function POOL_CreateLiquidity() public LGE_Possible {
+
         totalETHContributed = address(this).balance;
         IUniswapV2Pair pair = IUniswapV2Pair(UniswapPair);
         
@@ -201,7 +210,7 @@ contract UniCore_Token is ERC20 {
     }
     
  
-    //Users claim wrappedLPTokens
+//After ETH_ContributionPhase: Pool can create liquidity.
     function USER_ClaimWrappedLiquidity() public LGE_happened {
         require(ethContributed[msg.sender] > 0 , "Nothing to claim, move along");
         
@@ -318,4 +327,3 @@ contract UniCore_Token is ERC20 {
         }
 
 }
-
