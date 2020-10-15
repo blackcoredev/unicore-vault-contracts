@@ -23,6 +23,7 @@ contract UniCore_Token is ERC20 {
     mapping(address => mapping(address => uint256)) private _allowances;
     
     //timeStamps
+    uint256 public contractInitialized;
     uint256 public contractStart_Timestamp;
     uint256 public LPGCompleted_Timestamp;
     uint256 public constant contributionPhase = 300; //3 days;
@@ -53,7 +54,7 @@ contract UniCore_Token is ERC20 {
     }
     
     function initialSetup() public governanceLevel(2) {
-        contractStart_Timestamp = 1;
+        contractInitialized = block.timestamp;
         setBuySellFees(5, 11); //0.5% on buy, 1.1% on sell
         
         POOL_CreateUniswapPair(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D, 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f);
@@ -63,7 +64,7 @@ contract UniCore_Token is ERC20 {
     
     //Pool UniSwap pair creation method (called by  initialSetup() )
     function POOL_CreateUniswapPair(address router, address factory) internal returns (address) {
-        require(contractStart_Timestamp > 0, "intialize 1st");
+        require(contractInitialized > 0, "intialize 1st");
         
         uniswapRouterV2 = IUniswapV2Router02(router != address(0) ? router : 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
         uniswapFactory = IUniswapV2Factory(factory != address(0) ? factory : 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f); 
@@ -128,16 +129,19 @@ contract UniCore_Token is ERC20 {
     }
     
     modifier LGE_Possible() {
-       require(block.timestamp > contractStart_Timestamp.add(contributionPhase));
+        require(contractStart_Timestamp > 0);
+        require(block.timestamp > contractStart_Timestamp.add(contributionPhase));
        _; 
     }
     
     modifier LGE_happened() {
+        require(LPGCompleted_Timestamp > 0);
         require(block.timestamp > LPGCompleted_Timestamp);
         _;
     }
     modifier Trading_Possible() {
-        require(block.timestamp > LPGCompleted_Timestamp.add(stackingPhase));
+         require(LPGCompleted_Timestamp > 0);
+         require(block.timestamp > LPGCompleted_Timestamp.add(stackingPhase));
         _;
     }
     
@@ -327,3 +331,4 @@ contract UniCore_Token is ERC20 {
         }
 
 }
+
