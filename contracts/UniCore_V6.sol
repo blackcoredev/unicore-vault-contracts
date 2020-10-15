@@ -2,9 +2,9 @@
 
 pragma solidity >=0.6.0;
 
-import "./xERC20.sol";
+import "./ERC20.sol";
 
-contract UniCore_Token is xERC20 {
+contract UniCore_Token is ERC20 {
     using SafeMath for uint256;
     using Address for address;
 
@@ -22,9 +22,9 @@ contract UniCore_Token is xERC20 {
     uint256 public contractInitialized;
     uint256 public contractStart_Timestamp;
     uint256 public LGECompleted_Timestamp;
-    uint256 public constant contributionPhase = 3600; //3 days;
-    uint256 public constant stackingPhase = 3600;//2 hours;
-    uint256 public constant emergencyPeriod = 3600;//4 days;
+    uint256 public constant contributionPhase = 3 hours; //3 days;
+    uint256 public constant stackingPhase = 1 hours;//2 hours;
+    uint256 public constant emergencyPeriod = 1 days;//4 days;
     
     //Tokenomics
     uint256 public totalLPTokensMinted;
@@ -44,7 +44,7 @@ contract UniCore_Token is xERC20 {
     
 //=========================================================================================================================================
 
-    constructor() xERC20("Unicore", "UNICORE") public {
+    constructor() ERC20("Unicore", "UNICORE") public {
         _mint(address(this), initialSupply);
         governanceLevels[msg.sender] = 2;
     }
@@ -78,8 +78,8 @@ contract UniCore_Token is xERC20 {
     * can start contributing in ETH
     */
     function secondarySetup(address _Vault, address _wUNIv2) public governanceLevel(2) {
-        require(contractInitialized > 0);
-        Vault = _Vault;
+        require(contractInitialized > 0 && contractStart_Timestamp == 0);
+        setVault(_Vault); //also adds the Vault to noFeeList
         wUNIv2 = _wUNIv2;
         
         require(Vault != address(0) && wUNIv2 != address(0), "Wrapper Token and Vault not Setup");
@@ -130,7 +130,7 @@ contract UniCore_Token is xERC20 {
        _; 
     }
     
-    modifier LGE_Happened() {
+    modifier LGE_happened() {
         //require(LGECompleted_Timestamp > 0);
         //require(block.timestamp > LGECompleted_Timestamp);
         _;
@@ -152,7 +152,7 @@ contract UniCore_Token is xERC20 {
         (bool success, ) = msg.sender.call{value:(address(this).balance)}("");
         require(success, "Transfer failed.");
        
-        xERC20._transfer(address(this), msg.sender, balanceOf(address(this)));
+        ERC20._transfer(address(this), msg.sender, balanceOf(address(this)));
     }
 
 //During ETH_ContributionPhase: Users deposit funds
@@ -196,7 +196,7 @@ contract UniCore_Token is xERC20 {
         emit Transfer(address(this), address(pair), balanceOf(address(this)));
         
         //UniCore balances transfer
-        xERC20._transfer(address(this), address(pair), balanceOf(address(this)));
+        ERC20._transfer(address(this), address(pair), balanceOf(address(this)));
         pair.mint(address(this));       //mint LP tokens. lock method in UniSwapPairV2 PREVENTS FROM DOING IT TWICE
         
         totalLPTokensMinted = pair.balanceOf(address(this));
@@ -210,7 +210,7 @@ contract UniCore_Token is xERC20 {
     
  
 //After ETH_ContributionPhase: Pool can create liquidity.
-    function USER_ClaimWrappedLiquidity() public LGE_Happened {
+    function USER_ClaimWrappedLiquidity() public LGE_happened {
         require(ethContributed[msg.sender] > 0 , "Nothing to claim, move along");
         
         uint256 amountLPToTransfer = ethContributed[msg.sender].mul(LPperETHUnit).div(1e18);
@@ -255,13 +255,9 @@ contract UniCore_Token is xERC20 {
     
     function calculateAmountAndFee(address sender, uint256 amount) public view returns (uint256 netAmount, uint256 fee){
 
-        if(noFeeList[sender]) { 
-            fee = 0;
-        } else if(sender == UniswapPair) { 
-            fee = amount.mul(buyFee).div(1000); // buy fee
-        } else { 
-            fee = amount.mul(sellFee).div(1000);
-        }
+        if(noFeeList[sender]) { fee = 0;} // Don't have a fee when Vault is sending, or infinite loop
+        else if(sender == UniswapPair){ fee = amount.mul(buyFee).div(1000);}
+        else { fee = amount.mul(sellFee).div(1000);}
         
         netAmount = amount.sub(fee);
     }
@@ -293,41 +289,54 @@ contract UniCore_Token is xERC20 {
 //== Governable Functions
     
     //External variables
-    function setUniswapPair(address _UniswapPair) public governanceLevel(2) {
-        UniswapPair = _UniswapPair;
-    }
-    
-    function setVault(address _Vault) public governanceLevel(2) {
-        Vault = _Vault;
-    }
-    
-    //burns tokens from the contract (holding them)
-    function burnToken(uint256 amount) public governanceLevel(1) {
-        _burn(address(this), amount);
-    }
+        function setUniswapPair(address _UniswapPair) public governanceLevel(2) {
+            UniswapPair = _UniswapPair;
+            noFeeList[_UniswapPair] =  false; //making sure we take rewards
+        }
+        
+        function setVault(address _Vault) public governanceLevel(2) {
+            Vault = _Vault;
+            noFeeList[_Vault] =  true;
+        }
+        
+        
+        /* @dev :allows to upgrade the wrapper
+         * future devs will allow the wrapper to read live prices
+         * of liquidity tokens and to mint an Universal wrapper
+         * wrapping ANY UNIv2 LP token into their equivalent in 
+         * wrappedLP tokens, based on the wrapped asset price.
+         */
+        function setwUNIv2(address _wrapper) public governanceLevel(2) {
+            wUNIv2 = _wrapper;
+            noFeeList[_wrapper] =  true; //manages the wrapping of UniCores
+        }
+       
+        //burns tokens from the contract (holding them)
+        function burnToken(uint256 amount) public governanceLevel(1) {
+            _burn(address(this), amount);
+        }
     
     //Fees
-    uint256 public buyFee; uint256 public sellFee;
-    function setBuySellFees(uint256 _buyFee, uint256 _sellFee) public governanceLevel(1) {
-        buyFee = _buyFee;  //base 1000 -> 1 = 0.1%
-        sellFee = _sellFee;
-    }
-    
-    function setNoFeeList(address _address, bool _bool) public governanceLevel(1) {
-        noFeeList[_address] =  _bool;
-    }
+        uint256 public buyFee; uint256 public sellFee;
+        function setBuySellFees(uint256 _buyFee, uint256 _sellFee) public governanceLevel(1) {
+            buyFee = _buyFee;  //base 1000 -> 1 = 0.1%
+            sellFee = _sellFee;
+        }
+        
+        function setNoFeeList(address _address, bool _bool) public governanceLevel(1) {
+          noFeeList[_address] =  _bool;
+        }
     
 //==Getters 
 
-    function viewUNIv2() public view returns(address){
-        return UniswapPair;
-    }
-    function viewwWrappedUNIv2() public view returns(address){
-        return wUNIv2;
-    }
-    function viewVault() public view returns(address){
-        return Vault;
-    }
+        function viewUNIv2() public view returns(address){
+            return UniswapPair;
+        }
+        function viewwWrappedUNIv2() public view returns(address){
+            return wUNIv2;
+        }
+        function viewVault() public view returns(address){
+            return Vault;
+        }
         
 }
-
