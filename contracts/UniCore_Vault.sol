@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: WHO GIVES A FUCK ANYWAY??
 
-pragma solidity >= 0.6.0;
+pragma solidity ^0.6.6;
 
 import "./UniCore_Libraries.sol";
 import "./UniCore_Interfaces.sol";
@@ -56,9 +56,9 @@ contract UniCore_Vault {
 
     
 //INITIALIZE 
-    constructor() public {
+    constructor(address _UniCore) public {
 
-        UniCore = address(0xBC935114084188636d7C854f49f03F0A85B8FDF1);
+        UniCore = _UniCore;
         
         Treasury1 = address(0xF4D7a0E8a68345442172F45cAbD272c25320AA96); //TESTNET
         Treasury2 = address(0x397f9694Ca604c2bbdfB5c86227A64853940FB49); //stpd 
