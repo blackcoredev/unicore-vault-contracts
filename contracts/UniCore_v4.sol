@@ -25,7 +25,7 @@ contract UniCore_Token is ERC20 {
     //timeStamps
     uint256 public contractInitialized;
     uint256 public contractStart_Timestamp;
-    uint256 public LPGCompleted_Timestamp;
+    uint256 public LGECompleted_Timestamp;
     uint256 public constant contributionPhase = 300; //3 days;
     uint256 public constant stackingPhase = 300;//2 hours;
     uint256 public constant emergencyPeriod = 300;//4 days;
@@ -82,6 +82,7 @@ contract UniCore_Token is ERC20 {
     * can start contributing in ETH
     */
     function secondarySetup(address _Vault, address _wUNIv2) public governanceLevel(2) {
+        require(contractInitialized > 0);
         require(Vault != address(0) && wUNIv2 != address(0), "Wrapper Token and Vault not Setup");
         Vault = _Vault;
         wUNIv2 = _wUNIv2;
@@ -122,7 +123,6 @@ contract UniCore_Token is ERC20 {
      */
     
     modifier ETH_ContributionPhase() {
-        require(Vault != address(0) && wUNIv2 != address(0), "Wrapper Token and Vault not Setup");
         require(contractStart_Timestamp > 0);
         require(block.timestamp <= contractStart_Timestamp.add(contributionPhase));
         _;
@@ -135,13 +135,13 @@ contract UniCore_Token is ERC20 {
     }
     
     modifier LGE_happened() {
-        require(LPGCompleted_Timestamp > 0);
-        require(block.timestamp > LPGCompleted_Timestamp);
+        require(LGECompleted_Timestamp > 0);
+        require(block.timestamp > LGECompleted_Timestamp);
         _;
     }
     modifier Trading_Possible() {
-         require(LPGCompleted_Timestamp > 0);
-         require(block.timestamp > LPGCompleted_Timestamp.add(stackingPhase));
+         require(LGECompleted_Timestamp > 0);
+         require(block.timestamp > LGECompleted_Timestamp.add(stackingPhase));
         _;
     }
     
@@ -210,7 +210,7 @@ contract UniCore_Token is ERC20 {
         LPperETHUnit = totalLPTokensMinted.mul(1e18).div(totalETHContributed); // 1e18x for  change
         require(LPperETHUnit != 0 , "LP creation failed");
         
-        LPGCompleted_Timestamp = block.timestamp;
+        LGECompleted_Timestamp = block.timestamp;
     }
     
  
