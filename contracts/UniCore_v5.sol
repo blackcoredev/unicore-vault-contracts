@@ -5,7 +5,7 @@ pragma solidity >=0.6.0;
 import "./UniCore_Libraries.sol";
 import "./UniCore_Interfaces.sol";
 
-contract UniCore_Token is Context, IERC20 {
+contract UniCore_Token_v5 is Context, IERC20 {
     using SafeMath for uint256;
     using Address for address;
 
