@@ -53,7 +53,7 @@ contract UniCore_Token is ERC20 {
     }
     
     function initialSetup() public governanceLevel(2) {
-
+        contractStart_Timestamp = 1;
         setBuySellFees(5, 11); //0.5% on buy, 1.1% on sell
         
         POOL_CreateUniswapPair(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D, 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f);
@@ -327,4 +327,3 @@ contract UniCore_Token is ERC20 {
         }
 
 }
-
