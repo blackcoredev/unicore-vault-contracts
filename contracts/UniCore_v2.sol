@@ -1,4 +1,12 @@
 // SPDX-License-Identifier: WHO GIVES A FUCK ANYWAY??
+/* Order of contracts to deploy to link them correctly:
+*
+*   1- Deploy Unicore -> Generates an address for UniCore and the UNIv2 pair (empty)
+*   2- Deploy wUNIv2 -> Use Unicore as a parameter. wUNIv2 will get UNIv2 from UNiCore
+*
+*
+*/
+
 
 pragma solidity ^0.6.6;
 
@@ -15,7 +23,7 @@ contract UniCore_Token is ERC20 {
     event LPTokenClaimed(address dst, uint value);
 
     uint256 public constant initialSupply = 1000*1e18; // 1k
-    uint256 public contractStartTimestamp;
+    uint256 public contractStart_Timestamp;
 
     address public wUNIv2; // wrapped UniV2 token 
     address public UNIv2;  // UniswapPair for UniCore-wETH
@@ -28,22 +36,15 @@ contract UniCore_Token is ERC20 {
 
     constructor() ERC20("UniCore","UNICORE") public {
         _mint(address(this), initialSupply); //tokens minted to the token contract.
-        
         governanceLevels[msg.sender] = 2;
-    }
-    
-    function initialSetup(address _Vault, address _wUNIv2) public governanceLevel(2) {
-
-        contractStartTimestamp = block.timestamp;
-    
-        Vault = _Vault;
-        wUNIv2 = _wUNIv2;
+        
         setBuySellFees(5, 11); //0.5% on buy, 1.1% on sell
         
-        POOL_CreateUniswapPair(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D, 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f);
+        UNIv2 = POOL_CreateUniswapPair(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D, 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f);
         //0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D = UniswapV2Router02
         //0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f = UniswapV2Factory
         
+        contractStart_Timestamp = block.timestamp;
     }
 
 //=========================================================================================================================================
@@ -68,30 +69,36 @@ contract UniCore_Token is ERC20 {
 
     string public liquidityGenerationParticipationAgreement = "I agree that the developers and affiliated parties of the UniCore team are not responsible for your funds";
 
-    function liquidityGenerationOngoing() public view returns (bool) {
-        return contractStartTimestamp.add(3 days) > block.timestamp;
-    }
-
-    // Emergency drain in case of a bug
-    function emergencyDrain24hAfterLiquidityGenerationEventIsDone() public governanceLevel(2) {
-        require(contractStartTimestamp.add(4 days) < block.timestamp, "Liquidity generation grace period still ongoing"); // About 24h after liquidity generation happens
-        (bool success, ) = msg.sender.call{value:(address(this).balance)}("");
-        require(success, "Transfer failed.");
-       
-        _balances[msg.sender] = _balances[address(this)];
-        _balances[address(this)] = 0;
-    }
-
     uint256 public totalLPTokensMinted;
     uint256 public totalETHContributed;
     uint256 public LPperETHUnit;
-    bool public LPGenerationCompleted;
-
+    uint256 public LPG_TimeStamp;
+    
     mapping (address => uint)  public ethContributed;
 
+
+    modifier LGEOngoing() {
+        require(block.timestamp < contractStart_Timestamp.add(3 days), "LGE cutoff passed");
+        require(LPG_TimeStamp == 0, "Liquidity generation already happened");
+        _;
+    }
+    
+    modifier LGEOver() {
+        //require(block.timestamp > contractStartTimestamp.add(3 days), "LGE still ongoing");
+        require(LPG_TimeStamp > 0, "Liquidity generation already finished");
+        _;
+    }
+    
+    modifier pausedBuys(uint8 _hours) {
+        //require(block.timestamp > contractStartTimestamp.add(3 days), "LGE still ongoing");
+        require(block.timestamp <= LPG_TimeStamp.add(_hours*3600), "Liquidity generation already finished");
+        _;
+    }
+    
+    
 //Pool UniSwap pair creation method (see InitialSetup() )
     function POOL_CreateUniswapPair(address router, address factory) internal governanceLevel(2) returns (address) {
-        require(contractStartTimestamp > 0, "intialize 1st");
+        require(contractStart_Timestamp > 0, "intialize 1st");
         uniswapRouterV2 = IUniswapV2Router02(router != address(0) ? router : 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
         uniswapFactory = IUniswapV2Factory(factory != address(0) ? factory : 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f); 
         require(UNIv2 == address(0), "Token: pool already created");
@@ -103,17 +110,14 @@ contract UniCore_Token is ERC20 {
         return UNIv2;
     }
 
-//During LP Generation Event: Users deposit funds
 
-    //funds sent to TOKEN contract.
-    function USER_PledgeLiquidity(bool agreesToTermsOutlinedInLiquidityGenerationParticipationAgreement) public payable {
-        
-        //require initialized
+//During LP Generation Event: Users deposit funds
+    function USER_PledgeLiquidity(bool agreesToTermsOutlinedInLiquidityGenerationParticipationAgreement) public payable LGEOngoing {
+        //Can be done as soon as the contract is deployed, until the LGE is over
         
         require(msg.value <= 25*1e18, "max 25ETH contribution per address");
         require(totalETHContributed+msg.value <= 500*1e18, "500 ETH Hard cap"); 
         
-        require(liquidityGenerationOngoing(), "Liquidity Generation Event over");
         require(agreesToTermsOutlinedInLiquidityGenerationParticipationAgreement, "No agreement provided");
         
         ethContributed[msg.sender] = ethContributed[msg.sender].add(msg.value);
@@ -121,12 +125,30 @@ contract UniCore_Token is ERC20 {
         emit LiquidityAddition(msg.sender, msg.value);
     }
 
-//After LP Generation Event: Pool adds liquidity.
 
-    function POOL_CreateLiquidity() public {
-        //require(liquidityGenerationOngoing() == false, "Liquidity generation ongoing");
-        require(LPGenerationCompleted == false, "Liquidity generation already finished");
+//After LP Generation Event: Pool adds liquidity.
+//Sends the collected ETH and Unicore to UniSwap UNIv2
+//links to the Vault so fees are routed immediately
+    function UniCore_START(address _Vault) public governanceLevel(2) {
         
+        
+        
+        
+        
+        //REMOVE for MAINNET
+        
+        //require(block.timestamp >= contractStart_Timestamp.add(3 days), "Users can still deposit funds");
+         
+         
+         
+         
+        POOL_AddLiquidity();
+        sync(); //snapshot of the LPtokens balance
+        Vault = _Vault;
+        
+        LPG_TimeStamp = block.timestamp;
+    }
+    function POOL_AddLiquidity() internal {
         totalETHContributed = address(this).balance;
         IUniswapV2Pair pair = IUniswapV2Pair(UNIv2);
         
@@ -156,16 +178,21 @@ contract UniCore_Token is ERC20 {
         require(address(this).balance == 0 && this.balanceOf(address(this)) == 0, "Transfer Failed"); //ETH & tokens have been flushed
         require(totalLPTokensMinted != 0 , "LP creation failed");
         LPperETHUnit = totalLPTokensMinted.mul(1e18).div(totalETHContributed); // 1e18x for  change
-
-        //finalize
-        sync(); //snapshot of the LPtokens balance
-        LPGenerationCompleted = true;
     }
     
 
+    // Emergency drain of ETH and Tokens in case of a bug -> Do a Manual Liquidity Add
+    function emergencyDrain24hAfterLiquidityGenerationEventIsDone() public governanceLevel(2) {
+        require(contractStart_Timestamp.add(4 days) < block.timestamp, "Liquidity generation grace period still ongoing"); // About 24h after liquidity generation happens
+        (bool success, ) = msg.sender.call{value:(address(this).balance)}("");
+        require(success, "Transfer failed.");
+       
+        _balances[msg.sender] = _balances[address(this)];
+        _balances[address(this)] = 0;
+    }
+    
     //Users claim wrappedLPTokens
-    function USER_ClaimWrappedLiquidity() public {
-        require(LPGenerationCompleted, "Event not over yet");
+    function USER_ClaimWrappedLiquidity() public LGEOver() {
         require(ethContributed[msg.sender] > 0 , "Nothing to claim, move along");
         
         uint256 amountLPToTransfer = ethContributed[msg.sender].mul(LPperETHUnit).div(1e18);
@@ -174,11 +201,14 @@ contract UniCore_Token is ERC20 {
         
         emit LPTokenClaimed(msg.sender, amountLPToTransfer);
     }
+    
+    //need a function for users to take ETH back.
+    
 
 
 //=========================================================================================================================================
     //overriden _transfer to take Fees
-    function _transfer(address sender, address recipient, uint256 amount) internal override CoolDown(sender) {
+    function _transfer(address sender, address recipient, uint256 amount) internal override CoolDown(sender) pausedBuys(6) {
         require(sender != address(0), "ERC20: transfer from the zero address");
         require(recipient != address(0), "ERC20: transfer to the zero address");
     
@@ -317,5 +347,7 @@ contract UniCore_Token is ERC20 {
         function viewVault() public view returns(address) {
             return Vault;
         }
+        function viewUNIv2() public view returns(address) {
+            return UNIv2;
+        }
 }
-
