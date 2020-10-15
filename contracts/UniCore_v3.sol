@@ -116,8 +116,6 @@ contract UniCore_Token is Context, IERC20 {
     //funds sent to TOKEN contract.
     function USER_PledgeLiquidity(bool agreesToTermsOutlinedInLiquidityGenerationParticipationAgreement) public payable {
         
-        //require initialized
-        
         require(msg.value <= 25*1e18, "max 25ETH contribution per address");
         require(totalETHContributed+msg.value <= 500*1e18, "500 ETH Hard cap"); 
         
@@ -128,6 +126,15 @@ contract UniCore_Token is Context, IERC20 {
         totalETHContributed = totalETHContributed.add(msg.value); // for front end display during LGE
         emit LiquidityAddition(msg.sender, msg.value);
     }
+    
+    function USER_UNPledgeLiquidity() public {
+        require(liquidityGenerationOngoing(), "Liquidity Generation Event over");
+        
+        uint256 _amount = ethContributed[msg.sender];
+        transfer(msg.sender, _amount);
+        totalETHContributed = totalETHContributed.sub(_amount);
+    }
+
 
 //After LP Generation Event: Pool adds liquidity.
 
