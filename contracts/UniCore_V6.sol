@@ -119,25 +119,32 @@ contract UniCore_Token is ERC20 {
      */
     
     modifier ETH_ContributionPhase() {
-        //require(contractStart_Timestamp > 0);
-        //require(block.timestamp <= contractStart_Timestamp.add(contributionPhase));
+        require(contractStart_Timestamp > 0);
+        require(block.timestamp <= contractStart_Timestamp.add(contributionPhase));
         _;
     }
     
+    /* if totalETHContributed is bigger than 99% of the cap
+     * the LGE can happen (allows the LGE to happen sooner if needed)
+     * otherwise (ETHcontributed < 99% totalCap), time contraint applies
+     */
     modifier LGE_Possible() {
-        //require(contractStart_Timestamp > 0);
-        //require(block.timestamp > contractStart_Timestamp.add(contributionPhase));
+         
+        if(totalETHContributed < totalCap.mul(99).div(100)){ 
+        require(contractStart_Timestamp > 0);
+        require(block.timestamp > contractStart_Timestamp.add(contributionPhase));
+        }
        _; 
     }
     
     modifier LGE_happened() {
-        //require(LGECompleted_Timestamp > 0);
-        //require(block.timestamp > LGECompleted_Timestamp);
+        require(LGECompleted_Timestamp > 0);
+        require(block.timestamp > LGECompleted_Timestamp);
         _;
     }
     modifier Trading_Possible() {
-         //require(LGECompleted_Timestamp > 0);
-         //require(block.timestamp > LGECompleted_Timestamp.add(stackingPhase));
+         require(LGECompleted_Timestamp > 0);
+         require(block.timestamp > LGECompleted_Timestamp.add(stackingPhase));
         _;
     }
     
