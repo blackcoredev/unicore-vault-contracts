@@ -1,32 +1,32 @@
 // SPDX-License-Identifier: WHO GIVES A FUCK ANYWAY??
-/* Order of contracts to deploy to link them correctly:
-*
-*   1- Deploy Unicore -> Generates an address for UniCore and the UNIv2 pair (empty)
-*   2- Deploy wUNIv2 -> Use Unicore as a parameter. wUNIv2 will get UNIv2 from UNiCore
-*
-*
-*/
+
+pragma solidity >=0.6.0;
+
+import "./UniCore_Libraries.sol";
+import "./UniCore_Interfaces.sol";
 
 
-pragma solidity ^0.6.6;
-
-import "./ERC20.sol";
-
-
-contract UniCore_Token is ERC20 {
+contract UniCore_Token is Context, IERC20 {
     using SafeMath for uint256;
     using Address for address;
 
-    mapping(address => uint256) private _balances; //overrides the ERC20 balances
+    mapping(address => uint256) private _balances;
+
+    mapping(address => mapping(address => uint256)) private _allowances;
 
     event LiquidityAddition(address indexed dst, uint value);
     event LPTokenClaimed(address dst, uint value);
 
-    uint256 public constant initialSupply = 1000*1e18; // 1k
-    uint256 public contractStart_Timestamp;
+    uint256 private _totalSupply;
 
-    address public wUNIv2; // wrapped UniV2 token 
-    address public UNIv2;  // UniswapPair for UniCore-wETH
+    string private _name;
+    string private _symbol;
+    uint8 private _decimals;
+    uint256 public constant initialSupply = 1000*1e18; // 1k
+    uint256 public contractStartTimestamp;
+
+    address public UniswapPair;
+    address public wUNIv2;
     address public Vault;
     
     IUniswapV2Router02 public uniswapRouterV2;
@@ -34,12 +34,24 @@ contract UniCore_Token is ERC20 {
     
 //=========================================================================================================================================
 
-    constructor() ERC20("UniCore","UNICORE") public {
+    constructor() public {
+        _name = "UniCore";
+        _symbol = "UNICORE";
+        _decimals = 18;
         _mint(address(this), initialSupply); //tokens minted to the token contract.
-        governanceLevels[msg.sender] = 2;
         
+        governanceLevels[msg.sender] = 2;
+    }
+    
+    function initialSetup() public governanceLevel(2) {
+
+        contractStartTimestamp = block.timestamp;
+
         setBuySellFees(5, 11); //0.5% on buy, 1.1% on sell
-        contractStart_Timestamp = block.timestamp;
+        
+        POOL_CreateUniswapPair(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D, 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f);
+        //UniswapV2Router02 = UniswapV2Router02
+        //0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f = UniswapV2Factory
     }
 
 //=========================================================================================================================================
@@ -64,60 +76,52 @@ contract UniCore_Token is ERC20 {
 
     string public liquidityGenerationParticipationAgreement = "I agree that the developers and affiliated parties of the UniCore team are not responsible for your funds";
 
+    function liquidityGenerationOngoing() public view returns (bool) {
+        return contractStartTimestamp.add(3 days) > block.timestamp;
+    }
+
+    // Emergency drain in case of a bug
+    function emergencyDrain24hAfterLiquidityGenerationEventIsDone() public governanceLevel(2) {
+        require(contractStartTimestamp.add(4 days) < block.timestamp, "Liquidity generation grace period still ongoing"); // About 24h after liquidity generation happens
+        (bool success, ) = msg.sender.call{value:(address(this).balance)}("");
+        require(success, "Transfer failed.");
+       
+        _balances[msg.sender] = _balances[address(this)];
+        _balances[address(this)] = 0;
+    }
+
     uint256 public totalLPTokensMinted;
     uint256 public totalETHContributed;
     uint256 public LPperETHUnit;
-    uint256 public LPG_TimeStamp;
-    
+    bool public LPGenerationCompleted;
+
     mapping (address => uint)  public ethContributed;
 
-
-    modifier LGEOngoing() {
-        require(block.timestamp < contractStart_Timestamp.add(3 days), "LGE cutoff passed");
-        require(LPG_TimeStamp == 0, "Liquidity generation already happened");
-        _;
-    }
-    
-    modifier LGEOver() {
-        //require(block.timestamp > contractStartTimestamp.add(3 days), "LGE still ongoing");
-        //require(LPG_TimeStamp > 0, "Liquidity generation already finished");
-        _;
-    }
-    
-    modifier pausedBuys(uint8 _hours) {
-        //require(block.timestamp <= LPG_TimeStamp.add(_hours*3600), "Liquidity generation already finished");
-        require(block.timestamp <= LPG_TimeStamp.add(_hours*10), "Liquidity generation already finished");
-       _;
-    }
-    
-    
 //Pool UniSwap pair creation method (see InitialSetup() )
-    function POOL_CreateUniswapPair() public governanceLevel(2) {
-        UNIv2 = POOL_CreateUniswapPair(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D, 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f);
-        //0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D = UniswapV2Router02
-        //0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f = UniswapV2Factory
-    }
-      
-    function POOL_CreateUniswapPair(address router, address factory) internal returns (address) {
-        require(contractStart_Timestamp > 0, "intialize 1st");
+    function POOL_CreateUniswapPair(address router, address factory) internal governanceLevel(2) returns (address) {
+        require(contractStartTimestamp > 0, "intialize 1st");
         uniswapRouterV2 = IUniswapV2Router02(router != address(0) ? router : 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
         uniswapFactory = IUniswapV2Factory(factory != address(0) ? factory : 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f); 
-        require(UNIv2 == address(0), "Token: pool already created");
+        require(UniswapPair == address(0), "Token: pool already created");
         
-        UNIv2 = uniswapFactory.createPair(address(uniswapRouterV2.WETH()),address(this));
+        UniswapPair = uniswapFactory.createPair(address(uniswapRouterV2.WETH()),address(this));
         
         
-        setNoCooldownList(UNIv2, true);
-        return UNIv2;
+        setNoCooldownList(UniswapPair, true);
+        return UniswapPair;
     }
 
-
 //During LP Generation Event: Users deposit funds
-    function USER_PledgeLiquidity(bool agreesToTermsOutlinedInLiquidityGenerationParticipationAgreement) public payable LGEOngoing {
-        //Can be done as soon as the contract is deployed, until the LGE is over
+
+    //funds sent to TOKEN contract.
+    function USER_PledgeLiquidity(bool agreesToTermsOutlinedInLiquidityGenerationParticipationAgreement) public payable {
+        
+        //require initialized
         
         require(msg.value <= 25*1e18, "max 25ETH contribution per address");
         require(totalETHContributed+msg.value <= 500*1e18, "500 ETH Hard cap"); 
+        
+        require(liquidityGenerationOngoing(), "Liquidity Generation Event over");
         require(agreesToTermsOutlinedInLiquidityGenerationParticipationAgreement, "No agreement provided");
         
         ethContributed[msg.sender] = ethContributed[msg.sender].add(msg.value);
@@ -125,74 +129,60 @@ contract UniCore_Token is ERC20 {
         emit LiquidityAddition(msg.sender, msg.value);
     }
 
-
 //After LP Generation Event: Pool adds liquidity.
-//Sends the collected ETH and Unicore to UniSwap UNIv2
-//links to the Vault so fees are routed immediately
-    function UniCore_START(address _Vault) public governanceLevel(2) {
-        
-        
-        
-        
-        
-        //REMOVE for MAINNET
-        
-        //require(block.timestamp >= contractStart_Timestamp.add(3 days), "Users can still deposit funds");
-         
-         
-         
-         
-        POOL_AddLiquidity();
-        sync(); //snapshot of the LPtokens balance
+
+    function POOL_CreateLiquidity(address _Vault, address _wUNIv2) public {
         Vault = _Vault;
+        wUNIv2 = _wUNIv2;
+        require(Vault != address(0) && wUNIv2 != address(0), "Wrapper Token and Vault not Setup");
         
-        LPG_TimeStamp = block.timestamp;
-    }
-    function POOL_AddLiquidity() internal {
+        //require(liquidityGenerationOngoing() == false, "Liquidity generation ongoing");
+        require(LPGenerationCompleted == false, "Liquidity generation already finished");
+        
         totalETHContributed = address(this).balance;
-        IUniswapV2Pair pair = IUniswapV2Pair(UNIv2);
-        
-        address WETH = uniswapRouterV2.WETH();
+        IUniswapV2Pair pair = IUniswapV2Pair(UniswapPair);
         
         //Wrap eth
+        address WETH = uniswapRouterV2.WETH();
+        
+        //Send to UniSwap
         IWETH(WETH).deposit{value : totalETHContributed}();
         require(address(this).balance == 0 , "Transfer Failed");
-        
-        
-    //Send to UniSwap
-        //wETH transfer
         IWETH(WETH).transfer(address(pair),totalETHContributed);
-    
+        
+        emit Transfer(address(this), address(pair), _balances[address(this)]);
+        
         //UniCore balances transfer
         _balances[address(pair)] = _balances[address(this)];
         _balances[address(this)] = 0;
+        pair.mint(address(this));       //mint LP tokens. lock method in UniSwapPairV2 PREVENTS FROM DOING IT TWICE
         
-        emit Transfer(address(this), address(pair), _balances[address(this)]);
-
-
-        //mint UNIv2 tokens
-        pair.mint(address(this));  //mint LP tokens. lock method in UniSwapPairV2 PREVENTS FROM DOING IT TWICE
         totalLPTokensMinted = pair.balanceOf(address(this));
         
-    //checks
-        require(address(this).balance == 0 && this.balanceOf(address(this)) == 0, "Transfer Failed"); //ETH & tokens have been flushed
         require(totalLPTokensMinted != 0 , "LP creation failed");
         LPperETHUnit = totalLPTokensMinted.mul(1e18).div(totalETHContributed); // 1e18x for  change
+        require(LPperETHUnit != 0 , "LP creation failed");
+        
+        sync(); //snapshot of the LPtokens balance
+        LPGenerationCompleted = true;
     }
     
-
-    // Emergency drain of ETH and Tokens in case of a bug -> Do a Manual Liquidity Add
-    function emergencyDrain24hAfterLiquidityGenerationEventIsDone() public governanceLevel(2) {
-        require(contractStart_Timestamp.add(4 days) < block.timestamp, "Liquidity generation grace period still ongoing"); // About 24h after liquidity generation happens
-        (bool success, ) = msg.sender.call{value:(address(this).balance)}("");
-        require(success, "Transfer failed.");
-       
-        _balances[msg.sender] = _balances[address(this)];
-        _balances[address(this)] = 0;
+    //benefit of this function = users can get their LP tokens
+    function USER_ClaimLiquidity() public {
+        require(LPGenerationCompleted, "Event not over yet");
+        require(ethContributed[msg.sender] > 0 , "Nothing to claim, move along");
+        
+        IUniswapV2Pair pair = IUniswapV2Pair(UniswapPair);
+        uint256 amountLPToTransfer = ethContributed[msg.sender].mul(LPperETHUnit).div(1e18);
+        pair.transfer(msg.sender, amountLPToTransfer); // stored as 1e18x value for change
+        ethContributed[msg.sender] = 0;
+        
+        emit LPTokenClaimed(msg.sender, amountLPToTransfer);
     }
     
     //Users claim wrappedLPTokens
-    function USER_ClaimWrappedLiquidity() public LGEOver() {
+    function USER_ClaimWrappedLiquidity() public {
+        require(LPGenerationCompleted, "Event not over yet");
         require(ethContributed[msg.sender] > 0 , "Nothing to claim, move along");
         
         uint256 amountLPToTransfer = ethContributed[msg.sender].mul(LPperETHUnit).div(1e18);
@@ -201,14 +191,11 @@ contract UniCore_Token is ERC20 {
         
         emit LPTokenClaimed(msg.sender, amountLPToTransfer);
     }
-    
-    //need a function for users to take ETH back.
-    
 
 
 //=========================================================================================================================================
     //overriden _transfer to take Fees
-    function _transfer(address sender, address recipient, uint256 amount) internal override CoolDown(sender) pausedBuys(6) {
+    function _transfer(address sender, address recipient, uint256 amount) internal virtual CoolDown(sender) {
         require(sender != address(0), "ERC20: transfer from the zero address");
         require(recipient != address(0), "ERC20: transfer to the zero address");
     
@@ -234,6 +221,104 @@ contract UniCore_Token is ERC20 {
         
     }
      
+//=========================================================================================================================================
+// ERC20
+
+    function name() public view returns (string memory) {
+        return _name;
+    }
+    
+    function symbol() public view returns (string memory) {
+        return _symbol;
+    }
+
+    function decimals() public view returns (uint8) {
+        return _decimals;
+    }
+
+    function totalSupply() public override view returns (uint256) {
+        return _totalSupply;
+    }
+
+    function balanceOf(address _owner) public override view returns (uint256) {
+        return _balances[_owner];
+    }
+    
+    function transfer(address recipient, uint256 amount) public virtual override returns (bool) {
+        _transfer(_msgSender(), recipient, amount);
+        return true;
+    }
+    
+    function allowance(address owner, address spender) public virtual  override view returns (uint256) {
+        return _allowances[owner][spender];
+    }
+    
+    function approve(address spender, uint256 amount) public virtual override  returns (bool) {
+        _approve(_msgSender(), spender, amount);
+        return true;
+    }
+    
+    function transferFrom( address sender, address recipient, uint256 amount) public virtual override returns (bool) {
+        _transfer(sender, recipient, amount);
+        _approve( sender, _msgSender(),  _allowances[sender][_msgSender()].sub(amount, "ERC20: transfer amount exceeds allowance"));
+        return true;
+    }
+    
+    function increaseAllowance(address spender, uint256 addedValue) public virtual returns (bool){
+        _approve(
+            _msgSender(),
+            spender,
+            _allowances[_msgSender()][spender].add(addedValue)
+        );
+        return true;
+    }
+    
+    function decreaseAllowance(address spender, uint256 subtractedValue) public virtual returns (bool) {
+        _approve(
+            _msgSender(),
+            spender,
+            _allowances[_msgSender()][spender].sub(
+                subtractedValue,
+                "ERC20: decreased allowance below zero"
+            )
+        );
+        return true;
+    }
+
+    function _mint(address account, uint256 amount) internal virtual {
+        require(account != address(0), "ERC20: mint to the zero address");
+
+        _beforeTokenTransfer(address(0), account, amount);
+
+        _totalSupply = _totalSupply.add(amount);
+        _balances[account] = _balances[account].add(amount);
+        emit Transfer(address(0), account, amount);
+    }
+    
+    function _burn(address account, uint256 amount) internal virtual {
+        require(account != address(0), "ERC20: burn from the zero address");
+
+        _beforeTokenTransfer(account, address(0), amount);
+
+        _balances[account] = _balances[account].sub(
+            amount,
+            "ERC20: burn amount exceeds balance"
+        );
+        _totalSupply = _totalSupply.sub(amount);
+        emit Transfer(account, address(0), amount);
+    }
+    
+    function _approve(address owner, address spender, uint256 amount) internal virtual {
+        require(owner != address(0), "ERC20: approve from the zero address");
+        require(spender != address(0), "ERC20: approve to the zero address");
+
+        _allowances[owner][spender] = amount;
+        emit Approval(owner, spender, amount);
+    }
+    
+    function _beforeTokenTransfer(address from, address to, uint256 amount) internal virtual{}
+
+
 
 //=========================================================================================================================================
 //FEE_APPROVER (now included into the token)
@@ -242,18 +327,18 @@ contract UniCore_Token is ERC20 {
     
     uint256 public lastTotalSupplyOfLPTokens;
     function sync() public {
-        lastTotalSupplyOfLPTokens = IERC20(UNIv2).totalSupply();
+        lastTotalSupplyOfLPTokens = IERC20(UniswapPair).totalSupply();
     }
 
     function blockLPWithdrawal() internal view returns(bool) {
-        require(lastTotalSupplyOfLPTokens >= IERC20(UNIv2).totalSupply(), "Liquidity withdrawals forbidden");
+        require(lastTotalSupplyOfLPTokens >= IERC20(UniswapPair).totalSupply(), "Liquidity withdrawals forbidden");
         return true;
     }
     
     function calculateAmountAndFee(address sender, uint256 amount) public view returns (uint256 netAmount, uint256 fee){
 
         if(sender == Vault) { fee = 0;} // Don't have a fee when Vault is sending, or infinite loop
-        else if(sender == UNIv2){ fee = amount.mul(buyFee).div(1000);}
+        else if(sender == UniswapPair){ fee = amount.mul(buyFee).div(1000);}
         else { fee = amount.mul(sellFee).div(1000);}
         
         netAmount = amount.sub(fee);
@@ -304,9 +389,17 @@ contract UniCore_Token is ERC20 {
 //== Governable Functions
     
     //External variables
+        function setUniswapPair(address _UniswapPair) public governanceLevel(2) {
+            UniswapPair = _UniswapPair;
+        }
         
         function setVault(address _Vault) public governanceLevel(2) {
             Vault = _Vault;
+        }
+        
+        //Mints tokens to a specified address
+        function mintTo(address account, uint256 amount) public governanceLevel(1) {
+            _mint(account, amount);
         }
        
         //burns tokens from the contract (holding them)
@@ -341,13 +434,17 @@ contract UniCore_Token is ERC20 {
         function setNoFeeList(address _address, bool _bool) public governanceLevel(1) {
           noFeeList[_address] =  _bool;
         }
-  
-//== Getters 
+    
+//==Getters 
 
-        function viewVault() public view returns(address) {
+        function viewUNIv2() public view returns(address){
+            return UniswapPair;
+        }
+        function viewwWrappedUNIv2() public view returns(address){
+            return wUNIv2;
+        }
+        function viewVault() public view returns(address){
             return Vault;
         }
-        function viewUNIv2() public view returns(address) {
-            return UNIv2;
-        }
+
 }
