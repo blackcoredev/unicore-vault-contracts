@@ -25,17 +25,17 @@ contract UniCore_Token is ERC20 {
     //timeStamps
     uint256 public contractStart_Timestamp;
     uint256 public LPGCompleted_Timestamp;
-    uint256 public constant contributionPhase = 3 days;
-    uint256 public constant stackingPhase = 2 hours;
-    uint256 public constant emergencyPerdiod = 4 days;
+    uint256 public constant contributionPhase = 300; //3 days;
+    uint256 public constant stackingPhase = 300;//2 hours;
+    uint256 public constant emergencyPeriod = 300;//4 days;
     
     //Tokenomics
     uint256 public totalLPTokensMinted;
     uint256 public totalETHContributed;
     uint256 public LPperETHUnit;
     mapping (address => uint)  public ethContributed;
-    uint256 public constant individualCap = 25*1e18;
-    uint256 public constant totalCap = 500*1e18;
+    uint256 public constant individualCap = 1e17; //25*1e18;
+    uint256 public constant totalCap = 3*1e17; //500*1e18;
     
     
     //Ecosystem
@@ -47,7 +47,7 @@ contract UniCore_Token is ERC20 {
     
 //=========================================================================================================================================
 
-    constructor() ERC20("Unicore", "UNICORE") public {
+    constructor() ERC20("__Unicore", "__UNICORE") public {
         _mint(address(this), initialSupply);
         governanceLevels[msg.sender] = 2;
     }
@@ -146,7 +146,7 @@ contract UniCore_Token is ERC20 {
   
     // Emergency drain in case of a bug
     function emergencyDrain24hAfterLiquidityGenerationEventIsDone() public governanceLevel(2) {
-        require(contractStart_Timestamp.add(emergencyPerdiod) < block.timestamp, "Liquidity generation grace period still ongoing"); // About 24h after liquidity generation happens
+        require(contractStart_Timestamp.add(emergencyPeriod) < block.timestamp, "Liquidity generation grace period still ongoing"); // About 24h after liquidity generation happens
         
         (bool success, ) = msg.sender.call{value:(address(this).balance)}("");
         require(success, "Transfer failed.");
@@ -327,3 +327,4 @@ contract UniCore_Token is ERC20 {
         }
 
 }
+
