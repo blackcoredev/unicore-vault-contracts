@@ -6,6 +6,8 @@ pragma solidity ^0.6.6;
     interface IUniCore {
         function viewGovernanceLevel(address _address) external view returns(uint8);
         function viewVault() external view returns(address);
+        function viewUNIv2() external view returns(address);
+        function viewwWrappedUNIv2()external view returns(address);
     }
 
 //wUNIv2 wrappped UNIv2
