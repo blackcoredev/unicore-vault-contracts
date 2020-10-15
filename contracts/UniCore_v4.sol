@@ -24,8 +24,7 @@ contract UniCore_Token is ERC20 {
     //timeStamps
     uint256 public contractStart_Timestamp;
     uint256 public LPGCompleted_Timestamp;
-    bool public LPGenerationCompleted;
-    
+
     //Tokenomics
     uint256 public totalLPTokensMinted;
     uint256 public totalETHContributed;
@@ -112,11 +111,9 @@ contract UniCore_Token is ERC20 {
         _;
     }
     
-    
     function liquidityGenerationOngoing() public view returns (bool) {
         return contractStart_Timestamp.add(3 days) > block.timestamp;
     }
-    
     
     
 
@@ -176,9 +173,6 @@ contract UniCore_Token is ERC20 {
         wUNIv2 = _wUNIv2;
         require(Vault != address(0) && wUNIv2 != address(0), "Wrapper Token and Vault not Setup");
         
-        //require(liquidityGenerationOngoing() == false, "Liquidity generation ongoing");
-        require(LPGenerationCompleted == false, "Liquidity generation already finished");
-        
         totalETHContributed = address(this).balance;
         IUniswapV2Pair pair = IUniswapV2Pair(UniswapPair);
         
@@ -209,7 +203,6 @@ contract UniCore_Token is ERC20 {
  
     //Users claim wrappedLPTokens
     function USER_ClaimWrappedLiquidity() public LGE_happened {
-        require(LPGenerationCompleted, "Event not over yet");
         require(ethContributed[msg.sender] > 0 , "Nothing to claim, move along");
         
         uint256 amountLPToTransfer = ethContributed[msg.sender].mul(LPperETHUnit).div(1e18);
