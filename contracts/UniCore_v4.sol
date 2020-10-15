@@ -83,10 +83,10 @@ contract UniCore_Token is ERC20 {
     */
     function secondarySetup(address _Vault, address _wUNIv2) public governanceLevel(2) {
         require(contractInitialized > 0);
-        require(Vault != address(0) && wUNIv2 != address(0), "Wrapper Token and Vault not Setup");
         Vault = _Vault;
         wUNIv2 = _wUNIv2;
         
+        require(Vault != address(0) && wUNIv2 != address(0), "Wrapper Token and Vault not Setup");
         contractStart_Timestamp = block.timestamp;
     }
     
@@ -150,6 +150,7 @@ contract UniCore_Token is ERC20 {
   
     // Emergency drain in case of a bug
     function emergencyDrain24hAfterLiquidityGenerationEventIsDone() public governanceLevel(2) {
+        require(contractStart_Timestamp > 0);
         require(contractStart_Timestamp.add(emergencyPeriod) < block.timestamp, "Liquidity generation grace period still ongoing"); // About 24h after liquidity generation happens
         
         (bool success, ) = msg.sender.call{value:(address(this).balance)}("");
