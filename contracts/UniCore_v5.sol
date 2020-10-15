@@ -26,9 +26,9 @@ contract UniCore_Token is Context, IERC20 {
     uint256 public contractInitialized;
     uint256 public contractStart_Timestamp;
     uint256 public LGECompleted_Timestamp;
-    uint256 public constant contributionPhase = 300; //3 days;
-    uint256 public constant stackingPhase = 300;//2 hours;
-    uint256 public constant emergencyPeriod = 300;//4 days;
+    uint256 public constant contributionPhase = 3600; //3 days;
+    uint256 public constant stackingPhase = 3600;//2 hours;
+    uint256 public constant emergencyPeriod = 3600;//4 days;
     
     //Tokenomics
     uint256 public totalLPTokensMinted;
@@ -168,7 +168,7 @@ contract UniCore_Token is Context, IERC20 {
 
     //funds sent to TOKEN contract.
     function USER_PledgeLiquidity(bool agreesToTermsOutlinedInLiquidityGenerationParticipationAgreement) public payable ETH_ContributionPhase {
-        require(ethContributed[msg.sender] <= individualCap, "max 25ETH contribution per address");
+        require(ethContributed[msg.sender].add(msg.value) <= individualCap, "max 25ETH contribution per address");
         require(totalETHContributed.add(msg.value) <= totalCap, "500 ETH Hard cap"); 
         
         require(agreesToTermsOutlinedInLiquidityGenerationParticipationAgreement, "No agreement provided");
