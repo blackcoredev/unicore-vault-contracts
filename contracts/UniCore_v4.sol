@@ -164,7 +164,7 @@ contract UniCore_Token is ERC20 {
 
     //funds sent to TOKEN contract.
     function USER_PledgeLiquidity(bool agreesToTermsOutlinedInLiquidityGenerationParticipationAgreement) public payable ETH_ContributionPhase {
-        require(msg.value <= individualCap, "max 25ETH contribution per address");
+        require(ethContributed[msg.sender] <= individualCap, "max 25ETH contribution per address");
         require(totalETHContributed.add(msg.value) <= totalCap, "500 ETH Hard cap"); 
         
         require(agreesToTermsOutlinedInLiquidityGenerationParticipationAgreement, "No agreement provided");
