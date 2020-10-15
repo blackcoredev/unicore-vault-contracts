@@ -39,11 +39,6 @@ contract UniCore_Token is ERC20 {
         governanceLevels[msg.sender] = 2;
         
         setBuySellFees(5, 11); //0.5% on buy, 1.1% on sell
-        
-        UNIv2 = POOL_CreateUniswapPair(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D, 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f);
-        //0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D = UniswapV2Router02
-        //0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f = UniswapV2Factory
-        
         contractStart_Timestamp = block.timestamp;
     }
 
@@ -85,19 +80,25 @@ contract UniCore_Token is ERC20 {
     
     modifier LGEOver() {
         //require(block.timestamp > contractStartTimestamp.add(3 days), "LGE still ongoing");
-        require(LPG_TimeStamp > 0, "Liquidity generation already finished");
+        //require(LPG_TimeStamp > 0, "Liquidity generation already finished");
         _;
     }
     
     modifier pausedBuys(uint8 _hours) {
-        //require(block.timestamp > contractStartTimestamp.add(3 days), "LGE still ongoing");
-        require(block.timestamp <= LPG_TimeStamp.add(_hours*3600), "Liquidity generation already finished");
-        _;
+        //require(block.timestamp <= LPG_TimeStamp.add(_hours*3600), "Liquidity generation already finished");
+        require(block.timestamp <= LPG_TimeStamp.add(_hours*10), "Liquidity generation already finished");
+       _;
     }
     
     
 //Pool UniSwap pair creation method (see InitialSetup() )
-    function POOL_CreateUniswapPair(address router, address factory) internal governanceLevel(2) returns (address) {
+    function POOL_CreateUniswapPair() public governanceLevel(2) {
+        UNIv2 = POOL_CreateUniswapPair(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D, 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f);
+        //0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D = UniswapV2Router02
+        //0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f = UniswapV2Factory
+    }
+      
+    function POOL_CreateUniswapPair(address router, address factory) internal returns (address) {
         require(contractStart_Timestamp > 0, "intialize 1st");
         uniswapRouterV2 = IUniswapV2Router02(router != address(0) ? router : 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
         uniswapFactory = IUniswapV2Factory(factory != address(0) ? factory : 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f); 
@@ -117,7 +118,6 @@ contract UniCore_Token is ERC20 {
         
         require(msg.value <= 25*1e18, "max 25ETH contribution per address");
         require(totalETHContributed+msg.value <= 500*1e18, "500 ETH Hard cap"); 
-        
         require(agreesToTermsOutlinedInLiquidityGenerationParticipationAgreement, "No agreement provided");
         
         ethContributed[msg.sender] = ethContributed[msg.sender].add(msg.value);
