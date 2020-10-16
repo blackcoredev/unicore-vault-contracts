@@ -61,5 +61,8 @@ contract wUNIV2 is ERC20 {
         require(publicWrappingRatio < 100, "wrappingRatio capped at 100%");
         publicWrappingRatio = _ratioBase100;
     }
+    function viewPublicWrappingRatio() public view returns(uint256)  {
+        return publicWrappingRatio;
+    }
 
 }
