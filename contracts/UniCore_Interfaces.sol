@@ -10,10 +10,11 @@ pragma solidity ^0.6.6;
         function viewwWrappedUNIv2()external view returns(address);
     }
 
-//wUNIv2 wrappped UNIv2
-    interface IwUNIv2 {
+//Reactor is wrapping Tokens, generates wrappped UNIv2
+    interface IReactor {
         function wrapUNIv2(uint256 amount) external;
         function wTransfer(address recipient, uint256 amount) external;
+        function setPublicWrappingRatio(uint256 _ratioBase100) external;
     }
     
 //VAULT
@@ -228,3 +229,4 @@ pragma solidity ^0.6.6;
         function transfer(address to, uint value) external returns (bool);
         function withdraw(uint) external;
     }
+    
