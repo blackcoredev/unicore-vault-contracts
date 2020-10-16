@@ -17,8 +17,8 @@ contract UniCore_Vault {
     address public Treasury1;
     address public Treasury2;
     address public Treasury3;
-    uint256 treasuryFee;
-    uint256 pendingTreasuryRewards;
+    uint256 public treasuryFee;
+    uint256 public pendingTreasuryRewards;
     
 
 //USERS METRICS
@@ -64,7 +64,7 @@ contract UniCore_Vault {
         Treasury2 = address(0x397f9694Ca604c2bbdfB5c86227A64853940FB49); //stpd 
         Treasury3 = address(0x397f9694Ca604c2bbdfB5c86227A64853940FB49); //QS 
         
-        treasuryFee = 500; //5%
+        treasuryFee = 700; //7%
         
         contractStartBlock = block.number;
     }
@@ -94,8 +94,15 @@ contract UniCore_Vault {
  //set stuff (govenrors)
 
     // Add a new token pool. Can only be called by governors.
-    function addPool( uint256 _allocPoint, address _stakedToken, bool _withUpdate, bool _withdrawable) public governanceLevel(2) {
-        if (_withUpdate) { massUpdatePools();}
+    function addPool( uint256 _allocPoint, address _stakedToken, bool _withdrawable) public governanceLevel(2) {
+        require(_allocPoint > 0);
+        nonWithdrawableByAdmin[_stakedToken] = true; // stakedToken is now non-widthrawable by the admins.
+        
+        /* @dev Addressing potential issues with zombie pools.
+        *  https://medium.com/@DraculaProtocol/sushiswap-smart-contract-bug-and-quality-of-audits-in-community-f50ee0545bc6
+        *  Thank you @DraculaProtocol for this interesting post.
+        */
+        massUpdatePools();
 
         uint256 length = poolInfo.length;
         for (uint256 pid = 0; pid < length; ++pid) {
@@ -116,6 +123,7 @@ contract UniCore_Vault {
 
     // Updates the given pool's  allocation points. Can only be called with right governance levels.
     function setPool(uint256 _pid, uint256 _allocPoint, bool _withUpdate) public governanceLevel(2) {
+        require(_allocPoint > 0);
         if (_withUpdate) {massUpdatePools();}
 
         totalAllocPoint = totalAllocPoint.sub(poolInfo[_pid].allocPoint).add(_allocPoint);
@@ -180,7 +188,7 @@ contract UniCore_Vault {
     
     
     // Safe UniCore transfer function, Manages rounding errors.
-    function safeUniCoreTransfer(address _to, uint256 _amount) internal {   //TODO = pass internal
+    function safeUniCoreTransfer(address _to, uint256 _amount) internal {
         if(_amount == 0) return;
 
         uint256 UniCoreBal = IERC20(UniCore).balanceOf(address(this));
@@ -191,7 +199,7 @@ contract UniCore_Vault {
         UniCoreBalance = IERC20(UniCore).balanceOf(address(this));
     }
 
-//external call from token
+//external call from token when rewards are loaded
 
     /* @dev called by the token after each fee transfer to the vault.
     *       updates the pendingRewards and the rewardsInThisEpoch variables
@@ -247,7 +255,7 @@ contract UniCore_Vault {
         UserInfo storage user = userInfo[_pid][from];
         require(user.amount >= _amount, "withdraw: user amount insufficient");
 
-        updateAndPayOutPending(_pid, from); // //Transfer pending tokens, updates the pools 
+        updateAndPayOutPending(_pid, from); // //Transfer pending tokens, massupdates the pools 
 
         if(_amount > 0) {
             user.amount = user.amount.sub(_amount);
@@ -258,7 +266,6 @@ contract UniCore_Vault {
         emit Withdraw(to, _pid, _amount);
     }
 
-
     // Getter function to see pending UniCore rewards per user.
     function pendingUniCore(uint256 _pid, address _user) public view returns (uint256) {
         PoolInfo storage pool = poolInfo[_pid];
@@ -267,7 +274,6 @@ contract UniCore_Vault {
 
         return user.amount.mul(accUniCorePerShare).div(1e18).sub(user.rewardPaid);
     }
-    
 
 //==================================================================================================================================
 //TREASURY 
@@ -280,7 +286,7 @@ contract UniCore_Vault {
         //splitRewards
         uint256 rewards3 = pendingTreasuryRewards.mul(19).div(100); //stpd
         uint256 rewards2 = pendingTreasuryRewards.mul(19).div(100); //qtsr
-        uint256 rewards1 = pendingTreasuryRewards.sub(rewards3).sub(rewards2); //team
+        uint256 rewards1 = pendingTreasuryRewards.sub(rewards3).sub(rewards2); //team -> could
         
         
         //manages overflows or bad math
@@ -311,22 +317,23 @@ contract UniCore_Vault {
         require(viewGovernanceLevel(msg.sender) >= _level, "Grow some mustache kiddo...");
         _;
     }
+    
+    function setTreasuryFee(uint256 _newFee) public governanceLevel(2) {
+        require(_newFee <= 150, "treasuryFee capped at 15%");
+        treasuryFee = _newFee;
+    }
 
 // utils    
-    function isContract(address addr) public view returns (bool) {
-        uint size;
-        assembly { size := extcodesize(addr) }
-        return size > 0;
+    mapping(address => bool) nonWithdrawableByAdmin;
+    function isNonWithdrawbleByAdmins(address _token) public view returns(bool) {
+        return nonWithdrawableByAdmin[_token];
     }
+    function _widthdrawAnyToken(address _recipient, address _ERC20address, uint256 _amount) internal returns (bool) {
+        require(_ERC20address != UniCore, "Cannot withdraw Unicore from the pools");
+        require(nonWithdrawableByAdmin[_ERC20address], "this token is into a pool an cannot we withdrawn");
+        IERC20(_ERC20address).transfer(_recipient, _amount); //use of the _ERC20 traditional transfer
+        return true;
+    } //get tokens sent by error, excelt UniCore and those used for Staking.
     
-    // function that lets owner/governance contract
-    // approve allowance for any token inside this contract
-    // This means all future UNI like airdrops are covered
-    // And at the same time allows us to give allowance to strategy contracts.
-    // Upcoming cYFI etc vaults strategy contracts will use this function to manage and farm yield on value locked
-    function setContractAllowance(address tokenAddress, uint256 _amount, address contractAddress) public governanceLevel(2) {
-        require(isContract(contractAddress), "Recipent is not a smart contract, BOOOOOOO");
-        require(block.number > contractStartBlock.add(95000), "Governance setup grace period not over"); // about 2weeks
-        IERC20(tokenAddress).approve(contractAddress, _amount);
-    }
+    
 }
