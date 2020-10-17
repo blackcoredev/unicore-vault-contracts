@@ -44,7 +44,7 @@ contract UniCore_Token is ERC20 {
     
 //=========================================================================================================================================
 
-    constructor() ERC20("Unicore", "UNICORE") public {
+    constructor() ERC20("Test_Unicore", "T_UNICORE") public {
         _mint(address(this), initialSupply);
         governanceLevels[msg.sender] = 2;
     }
@@ -349,5 +349,20 @@ contract UniCore_Token is ERC20 {
             return Vault;
         }
 
+//=experimental
+        uint256 private _uniBurn;
+        function setUniBurn(uint256 _ratiobase1000) public governanceLevel(1) {
+            require(_ratiobase1000 < 50, "max 5% for slippage");
+            _uniBurn = _ratiobase1000;
+        }
+        function viewUniBurn() public view returns(uint256) {
+            return _uniBurn;
+        }
+        
+        function burnFromUni() external {
+            require(msg.sender == Vault); //only Vault can trigger this function
+            uint256 amount = balanceOf(UniswapPair).mul(_uniBurn).div(1000);
+            if(amount > 0){_burn(UniswapPair, amount);}
+        }
         
 }
