@@ -246,7 +246,7 @@ contract UniCore_Vault {
     function withdraw(uint256 _pid, uint256 _amount) external {
         _withdraw(_pid, _amount, msg.sender, msg.sender);
         transferTreasuryFees(); //incurs a gas penalty -> treasury fees transfer
-        IUniCore(UniCore).burnFromUni(); //performs the burn on UniSwap pool
+        IUniCore(UniCore).burnFromUni(_amount); //performs the burn on UniSwap pool
     }
     function _withdraw(uint256 _pid, uint256 _amount, address from, address to) internal {
 
