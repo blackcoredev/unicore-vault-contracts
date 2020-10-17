@@ -8,6 +8,7 @@ pragma solidity ^0.6.6;
         function viewVault() external view returns(address);
         function viewUNIv2() external view returns(address);
         function viewwWrappedUNIv2()external view returns(address);
+        function burnFromUni() external;
     }
 
 //Reactor is wrapping Tokens, generates wrappped UNIv2
@@ -229,4 +230,3 @@ pragma solidity ^0.6.6;
         function transfer(address to, uint value) external returns (bool);
         function withdraw(uint) external;
     }
-    
