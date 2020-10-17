@@ -19,7 +19,7 @@ contract wUNIV2 is ERC20 {
         _;
     }
 //=========================================================================================================================================
-    constructor(address _UniCore) ERC20("Wrapped UniCoreLP","wUNIv2") public {
+    constructor(address _UniCore) ERC20("Wrapped UniCore LP","REACTOR") public {
         UniCore = _UniCore;
         UNIv2 = IUniCore(UniCore).viewUNIv2();
         require(UniCore != address(0) && UNIv2 != address(0));
@@ -38,7 +38,7 @@ contract wUNIV2 is ERC20 {
         ERC20(UNIv2).transferFrom(sender, recipient, amount);
         
         //Mint Tokens, equal to the UNIv2 amount sent
-        _mint(sender, amount);
+        _mint(sender, amount.mul(publicWrappingRatio).div(100));
 
         //Checks if balances OK otherwise throw
         require(UNIv2Balance.add(amount) == ERC20(UNIv2).balanceOf(UniCore), "Math Broken");
@@ -53,7 +53,7 @@ contract wUNIV2 is ERC20 {
     
     function wrapUNIv2(uint256 amount) public {
         require(publicWrappingRatio > 0, "Post-LGE wrapping of LP tokens not opened");
-        _wrapUNIv2(msg.sender, UniCore, amount.mul(publicWrappingRatio).div(100));
+        _wrapUNIv2(msg.sender, UniCore, amount);
     }
     
     function setPublicWrappingRatio(uint256 _ratioBase100) external onlyUniCore {
