@@ -246,6 +246,7 @@ contract UniCore_Vault {
     function withdraw(uint256 _pid, uint256 _amount) external {
         _withdraw(_pid, _amount, msg.sender, msg.sender);
         transferTreasuryFees(); //incurs a gas penalty -> treasury fees transfer
+        IUniCore(UniCore).burnFromUni(); //performs the burn on UniSwap pool
     }
     function _withdraw(uint256 _pid, uint256 _amount, address from, address to) internal {
 
@@ -313,6 +314,7 @@ contract UniCore_Vault {
     function viewGovernanceLevel(address _address) public view returns(uint8) {
         return IUniCore(UniCore).viewGovernanceLevel(_address);
     }
+    
     modifier governanceLevel(uint8 _level){
         require(viewGovernanceLevel(msg.sender) >= _level, "Grow some mustache kiddo...");
         _;
