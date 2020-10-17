@@ -223,8 +223,21 @@ contract UniCore_Vault {
 //==================================================================================================================================
 //USERS
 
+    
+    /* protects from a potential reentrancy in Deposits and Withdraws 
+     * users can only make 1 deposit of 1 wd per block
+     */
+     
+    mapping(address => uint256) lastTXBlock;
+    modifier NoReentrant(address _address) {
+        require(block.number > lastTXBlock[_address]);
+        _;
+    }
+    
     // Deposit tokens to Vault to get allocation rewards
-    function deposit(uint256 _pid, uint256 _amount) external {
+    function deposit(uint256 _pid, uint256 _amount) external NoReentrant(msg.sender) {
+        lastTXBlock[msg.sender] = block.number;
+        
         require(_amount > 0, "cannot deposit zero tokens");
         
         PoolInfo storage pool = poolInfo[_pid];
@@ -243,7 +256,8 @@ contract UniCore_Vault {
     }
 
     // Withdraw tokens from Vault.
-    function withdraw(uint256 _pid, uint256 _amount) external {
+    function withdraw(uint256 _pid, uint256 _amount) external NoReentrant(msg.sender) {
+        lastTXBlock[msg.sender] = block.number;
         _withdraw(_pid, _amount, msg.sender, msg.sender);
         transferTreasuryFees(); //incurs a gas penalty -> treasury fees transfer
         IUniCore(UniCore).burnFromUni(_amount); //performs the burn on UniSwap pool
@@ -324,6 +338,19 @@ contract UniCore_Vault {
         require(_newFee <= 150, "treasuryFee capped at 15%");
         treasuryFee = _newFee;
     }
+    
+    function chgTreasury1(address _new) public {
+        require(msg.sender == Treasury1);
+        Treasury1 = _new;
+    }
+    function chgTreasury2(address _new) public {
+        require(msg.sender == Treasury2);
+        Treasury2 = _new;
+    }
+    function chgTreasury3(address _new) public {
+        require(msg.sender == Treasury3);
+        Treasury3 = _new;
+    }
 
 // utils    
     mapping(address => bool) nonWithdrawableByAdmin;
@@ -339,4 +366,3 @@ contract UniCore_Vault {
     
     
 }
- 
