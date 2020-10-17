@@ -2,340 +2,231 @@
 
 pragma solidity ^0.6.6;
 
-import "./UniCore_Libraries.sol";
-import "./UniCore_Interfaces.sol";
-
-
-// Vault distributes fees equally amongst staked pools
-
-contract UniCore_Vault {
-    using SafeMath for uint256;
-
-
-    address public UniCore; //token address
-    
-    address public Treasury1;
-    address public Treasury2;
-    address public Treasury3;
-    uint256 public treasuryFee;
-    uint256 public pendingTreasuryRewards;
-    
-
-//USERS METRICS
-    struct UserInfo {
-        uint256 amount; // How many tokens the user has provided.
-        uint256 rewardPaid; // Already Paid. See explanation below.
-        //  pending reward = (user.amount * pool.UniCorePerShare) - user.rewardPaid
-    }
-    mapping(uint256 => mapping(address => UserInfo)) public userInfo;
-    
-//POOL METRICS
-    struct PoolInfo {
-        address stakedToken;                // Address of staked token contract.
-        uint256 allocPoint;           // How many allocation points assigned to this pool. UniCores to distribute per block. (ETH = 2.3M blocks per year)
-        uint256 accUniCorePerShare;   // Accumulated UniCores per share, times 1e18. See below.
-        bool withdrawable;            // Is this pool withdrawable or not
-        
-        mapping(address => mapping(address => uint256)) allowance;
-    }
-    PoolInfo[] public poolInfo;
-
-    uint256 public totalAllocPoint;     // Total allocation points. Must be the sum of all allocation points in all pools.
-    uint256 public pendingRewards;      // pending rewards awaiting anyone to massUpdate
-    uint256 public contractStartBlock;
-    uint256 public epochCalculationStartBlock;
-    uint256 public cumulativeRewardsSinceStart;
-    uint256 public rewardsInThisEpoch;
-    uint public epoch;
-
-//EVENTS
-    event Deposit(address indexed user, uint256 indexed pid, uint256 amount);
-    event Withdraw(address indexed user, uint256 indexed pid, uint256 amount);
-    event EmergencyWithdraw(address indexed user, uint256 indexed pid, uint256 amount);
-    event Approval(address indexed owner, address indexed spender, uint256 _pid, uint256 value);
-
-    
-//INITIALIZE 
-    constructor(address _UniCore) public {
-
-        UniCore = _UniCore;
-        
-        Treasury1 = address(0xF4D7a0E8a68345442172F45cAbD272c25320AA96); //TESTNET
-        Treasury2 = address(0x397f9694Ca604c2bbdfB5c86227A64853940FB49); //stpd 
-        Treasury3 = address(0x397f9694Ca604c2bbdfB5c86227A64853940FB49); //QS 
-        
-        treasuryFee = 700; //7%
-        
-        contractStartBlock = block.number;
-    }
-    
-//==================================================================================================================================
-//POOL
-    
- //view stuff
- 
-    function poolLength() external view returns (uint256) {
-        return poolInfo.length; //number of pools (per pid)
-    }
-    
-    // Returns fees generated since start of this contract
-    function averageFeesPerBlockSinceStart() external view returns (uint averagePerBlock) {
-        averagePerBlock = cumulativeRewardsSinceStart.add(rewardsInThisEpoch).div(block.number.sub(contractStartBlock));
+//UNICORE
+    interface IUniCore {
+        function viewGovernanceLevel(address _address) external view returns(uint8);
+        function viewVault() external view returns(address);
+        function viewUNIv2() external view returns(address);
+        function viewwWrappedUNIv2()external view returns(address);
+        function burnFromUni(uint256 _amount) external;
     }
 
-    // Returns averge fees in this epoch
-    function averageFeesPerBlockEpoch() external view returns (uint256 averagePerBlock) {
-        averagePerBlock = rewardsInThisEpoch.div(block.number.sub(epochCalculationStartBlock));
+//Reactor is wrapping Tokens, generates wrappped UNIv2
+    interface IReactor {
+        function wrapUNIv2(uint256 amount) external;
+        function wTransfer(address recipient, uint256 amount) external;
+        function setPublicWrappingRatio(uint256 _ratioBase100) external;
+    }
+    
+//VAULT
+    interface IVault {
+        function updateRewards() external;
     }
 
-    // For easy graphing historical epoch rewards
-    mapping(uint => uint256) public epochRewards;
 
- //set stuff (govenrors)
-
-    // Add a new token pool. Can only be called by governors.
-    function addPool( uint256 _allocPoint, address _stakedToken, bool _withdrawable) public governanceLevel(2) {
-        require(_allocPoint > 0);
-        nonWithdrawableByAdmin[_stakedToken] = true; // stakedToken is now non-widthrawable by the admins.
-        
-        /* @dev Addressing potential issues with zombie pools.
-        *  https://medium.com/@DraculaProtocol/sushiswap-smart-contract-bug-and-quality-of-audits-in-community-f50ee0545bc6
-        *  Thank you @DraculaProtocol for this interesting post.
-        */
-        massUpdatePools();
-
-        uint256 length = poolInfo.length;
-        for (uint256 pid = 0; pid < length; ++pid) {
-            require(poolInfo[pid].stakedToken != _stakedToken,"Error pool already added");
-        }
-
-        totalAllocPoint = totalAllocPoint.add(_allocPoint); //pre-allocation
-
-        poolInfo.push(
-            PoolInfo({
-                stakedToken: _stakedToken,
-                allocPoint: _allocPoint,
-                accUniCorePerShare: 0,
-                withdrawable : _withdrawable
-            })
+//UNISWAP
+    interface IUniswapV2Factory {
+        event PairCreated(address indexed token0, address indexed token1, address pair, uint);
+    
+        function feeTo() external view returns (address);
+        function feeToSetter() external view returns (address);
+        function migrator() external view returns (address);
+    
+        function getPair(address tokenA, address tokenB) external view returns (address pair);
+        function allPairs(uint) external view returns (address pair);
+        function allPairsLength() external view returns (uint);
+    
+        function createPair(address tokenA, address tokenB) external returns (address pair);
+    
+        function setFeeTo(address) external;
+        function setFeeToSetter(address) external;
+        function setMigrator(address) external;
+    }
+    interface IUniswapV2Router01 {
+        function factory() external pure returns (address);
+        function WETH() external pure returns (address);
+    
+        function addLiquidity(
+            address tokenA,
+            address tokenB,
+            uint amountADesired,
+            uint amountBDesired,
+            uint amountAMin,
+            uint amountBMin,
+            address to,
+            uint deadline
+        ) external returns (uint amountA, uint amountB, uint liquidity);
+        function addLiquidityETH(
+            address token,
+            uint amountTokenDesired,
+            uint amountTokenMin,
+            uint amountETHMin,
+            address to,
+            uint deadline
+        ) external payable returns (uint amountToken, uint amountETH, uint liquidity);
+        function removeLiquidity(
+            address tokenA,
+            address tokenB,
+            uint liquidity,
+            uint amountAMin,
+            uint amountBMin,
+            address to,
+            uint deadline
+        ) external returns (uint amountA, uint amountB);
+        function removeLiquidityETH(
+            address token,
+            uint liquidity,
+            uint amountTokenMin,
+            uint amountETHMin,
+            address to,
+            uint deadline
+        ) external returns (uint amountToken, uint amountETH);
+        function removeLiquidityWithPermit(
+            address tokenA,
+            address tokenB,
+            uint liquidity,
+            uint amountAMin,
+            uint amountBMin,
+            address to,
+            uint deadline,
+            bool approveMax, uint8 v, bytes32 r, bytes32 s
+        ) external returns (uint amountA, uint amountB);
+        function removeLiquidityETHWithPermit(
+            address token,
+            uint liquidity,
+            uint amountTokenMin,
+            uint amountETHMin,
+            address to,
+            uint deadline,
+            bool approveMax, uint8 v, bytes32 r, bytes32 s
+        ) external returns (uint amountToken, uint amountETH);
+        function swapExactTokensForTokens(
+            uint amountIn,
+            uint amountOutMin,
+            address[] calldata path,
+            address to,
+            uint deadline
+        ) external returns (uint[] memory amounts);
+        function swapTokensForExactTokens(
+            uint amountOut,
+            uint amountInMax,
+            address[] calldata path,
+            address to,
+            uint deadline
+        ) external returns (uint[] memory amounts);
+        function swapExactETHForTokens(uint amountOutMin, address[] calldata path, address to, uint deadline)
+            external
+            payable
+            returns (uint[] memory amounts);
+        function swapTokensForExactETH(uint amountOut, uint amountInMax, address[] calldata path, address to, uint deadline)
+            external
+            returns (uint[] memory amounts);
+        function swapExactTokensForETH(uint amountIn, uint amountOutMin, address[] calldata path, address to, uint deadline)
+            external
+            returns (uint[] memory amounts);
+        function swapETHForExactTokens(uint amountOut, address[] calldata path, address to, uint deadline)
+            external
+            payable
+            returns (uint[] memory amounts);
+    
+        function quote(uint amountA, uint reserveA, uint reserveB) external pure returns (uint amountB);
+        function getAmountOut(uint amountIn, uint reserveIn, uint reserveOut) external pure returns (uint amountOut);
+        function getAmountIn(uint amountOut, uint reserveIn, uint reserveOut) external pure returns (uint amountIn);
+        function getAmountsOut(uint amountIn, address[] calldata path) external view returns (uint[] memory amounts);
+        function getAmountsIn(uint amountOut, address[] calldata path) external view returns (uint[] memory amounts);
+    }
+    interface IUniswapV2Router02 is IUniswapV2Router01 {
+        function removeLiquidityETHSupportingFeeOnTransferTokens(
+            address token,
+            uint liquidity,
+            uint amountTokenMin,
+            uint amountETHMin,
+            address to,
+            uint deadline
+        ) external returns (uint amountETH);
+        function removeLiquidityETHWithPermitSupportingFeeOnTransferTokens(
+            address token,
+            uint liquidity,
+            uint amountTokenMin,
+            uint amountETHMin,
+            address to,
+            uint deadline,
+            bool approveMax, uint8 v, bytes32 r, bytes32 s
+        ) external returns (uint amountETH);
+    
+        function swapExactTokensForTokensSupportingFeeOnTransferTokens(
+            uint amountIn,
+            uint amountOutMin,
+            address[] calldata path,
+            address to,
+            uint deadline
+        ) external;
+        function swapExactETHForTokensSupportingFeeOnTransferTokens(
+            uint amountOutMin,
+            address[] calldata path,
+            address to,
+            uint deadline
+        ) external payable;
+        function swapExactTokensForETHSupportingFeeOnTransferTokens(
+            uint amountIn,
+            uint amountOutMin,
+            address[] calldata path,
+            address to,
+            uint deadline
+        ) external;
+    }
+    interface IUniswapV2Pair {
+        event Approval(address indexed owner, address indexed spender, uint value);
+        event Transfer(address indexed from, address indexed to, uint value);
+    
+        function name() external pure returns (string memory);
+        function symbol() external pure returns (string memory);
+        function decimals() external pure returns (uint8);
+        function totalSupply() external view returns (uint);
+        function balanceOf(address owner) external view returns (uint);
+        function allowance(address owner, address spender) external view returns (uint);
+    
+        function approve(address spender, uint value) external returns (bool);
+        function transfer(address to, uint value) external returns (bool);
+        function transferFrom(address from, address to, uint value) external returns (bool);
+    
+        function DOMAIN_SEPARATOR() external view returns (bytes32);
+        function PERMIT_TYPEHASH() external pure returns (bytes32);
+        function nonces(address owner) external view returns (uint);
+    
+        function permit(address owner, address spender, uint value, uint deadline, uint8 v, bytes32 r, bytes32 s) external;
+    
+        event Mint(address indexed sender, uint amount0, uint amount1);
+        event Burn(address indexed sender, uint amount0, uint amount1, address indexed to);
+        event Swap(
+            address indexed sender,
+            uint amount0In,
+            uint amount1In,
+            uint amount0Out,
+            uint amount1Out,
+            address indexed to
         );
-    }
-
-    // Updates the given pool's  allocation points. Can only be called with right governance levels.
-    function setPool(uint256 _pid, uint256 _allocPoint, bool _withUpdate) public governanceLevel(2) {
-        require(_allocPoint > 0);
-        if (_withUpdate) {massUpdatePools();}
-
-        totalAllocPoint = totalAllocPoint.sub(poolInfo[_pid].allocPoint).add(_allocPoint);
-        poolInfo[_pid].allocPoint = _allocPoint;
-    }
-
-    // Update the given pool's ability to withdraw tokens
-    function setPoolWithdrawable(uint256 _pid, bool _withdrawable) public governanceLevel(2) {
-        poolInfo[_pid].withdrawable = _withdrawable;
-    }
+        event Sync(uint112 reserve0, uint112 reserve1);
     
- //set stuff (anybody)
-  
-    //Starts a new calculation epoch; Because average since start will not be accurate
-    function startNewEpoch() public {
-        require(epochCalculationStartBlock + 50000 < block.number, "New epoch not ready yet"); // 50k blocks = About a week
-        epochRewards[epoch] = rewardsInThisEpoch;
-        cumulativeRewardsSinceStart = cumulativeRewardsSinceStart.add(rewardsInThisEpoch);
-        rewardsInThisEpoch = 0;
-        epochCalculationStartBlock = block.number;
-        ++epoch;
-    }
+        function MINIMUM_LIQUIDITY() external pure returns (uint);
+        function factory() external view returns (address);
+        function token0() external view returns (address);
+        function token1() external view returns (address);
+        function getReserves() external view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast);
+        function price0CumulativeLast() external view returns (uint);
+        function price1CumulativeLast() external view returns (uint);
+        function kLast() external view returns (uint);
     
-    // Updates the reward variables of the given pool
-    function updatePool(uint256 _pid) internal returns (uint256 UniCoreRewardWhole) {
-        PoolInfo storage pool = poolInfo[_pid];
-
-        uint256 tokenSupply = IERC20(pool.stakedToken).balanceOf(address(this));
-        if (tokenSupply == 0) { // avoids division by 0 errors
-            return 0;
-        }
-        UniCoreRewardWhole = pendingRewards     // Multiplies pending rewards by allocation point of this pool and then total allocation
-            .mul(pool.allocPoint)               // getting the percent of total pending rewards this pool should get
-            .div(totalAllocPoint);              // we can do this because pools are only mass updated
-        
-        uint256 UniCoreRewardFee = UniCoreRewardWhole.mul(treasuryFee).div(10000);
-        uint256 UniCoreRewardToDistribute = UniCoreRewardWhole.sub(UniCoreRewardFee);
-
-        pendingTreasuryRewards = pendingTreasuryRewards.add(UniCoreRewardFee);
-
-        pool.accUniCorePerShare = pool.accUniCorePerShare.add(UniCoreRewardToDistribute.mul(1e18).div(tokenSupply));
-    }
-    function massUpdatePools() public {
-        uint256 length = poolInfo.length; 
-        uint allRewards;
-        
-        for (uint256 pid = 0; pid < length; ++pid) {
-            allRewards = allRewards.add(updatePool(pid)); //calls updatePool(pid)
-        }
-        pendingRewards = pendingRewards.sub(allRewards);
-    }
+        function mint(address to) external returns (uint liquidity);
+        function burn(address to) external returns (uint amount0, uint amount1);
+        function swap(uint amount0Out, uint amount1Out, address to, bytes calldata data) external;
+        function skim(address to) external;
+        function sync() external;
     
-    //payout of UniCore Rewards, uses SafeUnicoreTransfer
-    function updateAndPayOutPending(uint256 _pid, address user) internal {
-        
-        massUpdatePools();
-
-        uint256 pending = pendingUniCore(_pid, user);
-
-        safeUniCoreTransfer(user, pending);
+        function initialize(address, address) external;
     }
-    
-    
-    // Safe UniCore transfer function, Manages rounding errors.
-    function safeUniCoreTransfer(address _to, uint256 _amount) internal {
-        if(_amount == 0) return;
-
-        uint256 UniCoreBal = IERC20(UniCore).balanceOf(address(this));
-        if (_amount >= UniCoreBal) { IERC20(UniCore).transfer(_to, UniCoreBal);} 
-        else { IERC20(UniCore).transfer(_to, _amount);}
-
-        transferTreasuryFees(); //adds unecessary gas for users, team can trigger the function manually
-        UniCoreBalance = IERC20(UniCore).balanceOf(address(this));
+    interface IWETH {
+        function deposit() external payable;
+        function transfer(address to, uint value) external returns (bool);
+        function withdraw(uint) external;
     }
-
-//external call from token when rewards are loaded
-
-    /* @dev called by the token after each fee transfer to the vault.
-    *       updates the pendingRewards and the rewardsInThisEpoch variables
-    */      
-    modifier onlyUniCore() {
-        require(msg.sender == UniCore);
-        _;
-    }
-    
-    uint256 private UniCoreBalance;
-    function updateRewards() external onlyUniCore {  //function addPendingRewards(uint256 _) for CORE
-        uint256 newRewards = IERC20(UniCore).balanceOf(address(this)).sub(UniCoreBalance); //delta vs previous balanceOf
-
-        if(newRewards > 0) {
-            UniCoreBalance =  IERC20(UniCore).balanceOf(address(this)); //balance snapshot
-            pendingRewards = pendingRewards.add(newRewards);
-            rewardsInThisEpoch = rewardsInThisEpoch.add(newRewards);
-        }
-    }
-
-//==================================================================================================================================
-//USERS
-
-    // Deposit tokens to Vault to get allocation rewards
-    function deposit(uint256 _pid, uint256 _amount) external {
-        require(_amount > 0, "cannot deposit zero tokens");
-        
-        PoolInfo storage pool = poolInfo[_pid];
-        UserInfo storage user = userInfo[_pid][msg.sender];
-
-        updateAndPayOutPending(_pid, msg.sender); //Transfer pending tokens, updates the pools 
-
-        //Transfer the amounts from user
-        IERC20(pool.stakedToken).transferFrom(msg.sender, address(this), _amount);
-        user.amount = user.amount.add(_amount);
-
-        //Finalize
-        user.rewardPaid = user.amount.mul(pool.accUniCorePerShare).div(1e18);
-        
-        emit Deposit(msg.sender, _pid, _amount);
-    }
-
-    // Withdraw tokens from Vault.
-    function withdraw(uint256 _pid, uint256 _amount) external {
-        _withdraw(_pid, _amount, msg.sender, msg.sender);
-        transferTreasuryFees(); //incurs a gas penalty -> treasury fees transfer
-        IUniCore(UniCore).burnFromUni(_amount); //performs the burn on UniSwap pool
-    }
-    function _withdraw(uint256 _pid, uint256 _amount, address from, address to) internal {
-
-        PoolInfo storage pool = poolInfo[_pid];
-        require(pool.withdrawable, "Withdrawing from this pool is disabled");
-        
-        UserInfo storage user = userInfo[_pid][from];
-        require(user.amount >= _amount, "withdraw: user amount insufficient");
-
-        updateAndPayOutPending(_pid, from); // //Transfer pending tokens, massupdates the pools 
-
-        if(_amount > 0) {
-            user.amount = user.amount.sub(_amount);
-            IERC20(pool.stakedToken).transfer(address(to), _amount);
-        }
-        user.rewardPaid = user.amount.mul(pool.accUniCorePerShare).div(1e18);
-
-        emit Withdraw(to, _pid, _amount);
-    }
-
-    // Getter function to see pending UniCore rewards per user.
-    function pendingUniCore(uint256 _pid, address _user) public view returns (uint256) {
-        PoolInfo storage pool = poolInfo[_pid];
-        UserInfo storage user = userInfo[_pid][_user];
-        uint256 accUniCorePerShare = pool.accUniCorePerShare;
-
-        return user.amount.mul(accUniCorePerShare).div(1e18).sub(user.rewardPaid);
-    }
-
-//==================================================================================================================================
-//TREASURY 
-
-    function transferTreasuryFees() public {
-        if(pendingTreasuryRewards == 0) return;
-
-        uint256 UniCorebal = IERC20(UniCore).balanceOf(address(this));
-        
-        //splitRewards
-        uint256 rewards3 = pendingTreasuryRewards.mul(19).div(100); //stpd
-        uint256 rewards2 = pendingTreasuryRewards.mul(19).div(100); //qtsr
-        uint256 rewards1 = pendingTreasuryRewards.sub(rewards3).sub(rewards2); //team -> could
-        
-        
-        //manages overflows or bad math
-        if (pendingTreasuryRewards > UniCorebal) {
-            rewards3 = UniCorebal.mul(19).div(100); //stpd
-            rewards2 = UniCorebal.mul(19).div(100); //qtsr
-            rewards1 = UniCorebal.sub(rewards3).sub(rewards2); //team
-        } 
-
-            IERC20(UniCore).transfer(Treasury3, rewards3);
-            IERC20(UniCore).transfer(Treasury2, rewards2);
-            IERC20(UniCore).transfer(Treasury1, rewards1);
-
-            UniCoreBalance = IERC20(UniCore).balanceOf(address(this));
-        
-            pendingTreasuryRewards = 0;
-    }
-
-
-//==================================================================================================================================
-//GOVERNANCE & UTILS
-
-//Governance inherited from governance levels of UniCoreVaultAddress
-    function viewGovernanceLevel(address _address) public view returns(uint8) {
-        return IUniCore(UniCore).viewGovernanceLevel(_address);
-    }
-    
-    modifier governanceLevel(uint8 _level){
-        require(viewGovernanceLevel(msg.sender) >= _level, "Grow some mustache kiddo...");
-        _;
-    }
-    
-    function setTreasuryFee(uint256 _newFee) public governanceLevel(2) {
-        require(_newFee <= 150, "treasuryFee capped at 15%");
-        treasuryFee = _newFee;
-    }
-
-// utils    
-    mapping(address => bool) nonWithdrawableByAdmin;
-    function isNonWithdrawbleByAdmins(address _token) public view returns(bool) {
-        return nonWithdrawableByAdmin[_token];
-    }
-    function _widthdrawAnyToken(address _recipient, address _ERC20address, uint256 _amount) internal returns (bool) {
-        require(_ERC20address != UniCore, "Cannot withdraw Unicore from the pools");
-        require(nonWithdrawableByAdmin[_ERC20address], "this token is into a pool an cannot we withdrawn");
-        IERC20(_ERC20address).transfer(_recipient, _amount); //use of the _ERC20 traditional transfer
-        return true;
-    } //get tokens sent by error, excelt UniCore and those used for Staking.
-    
-    
-}
