@@ -230,3 +230,4 @@ pragma solidity ^0.6.6;
         function transfer(address to, uint value) external returns (bool);
         function withdraw(uint) external;
     }
+    
