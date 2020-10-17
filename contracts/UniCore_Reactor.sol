@@ -44,7 +44,6 @@ contract wUNIV2 is ERC20 {
         require(UNIv2Balance.add(amount) == ERC20(UNIv2).balanceOf(UniCore), "Math Broken");
     }
     
-     
     function wTransfer(address recipient, uint256 amount) external onlyUniCore{
         _mint(recipient, amount);
     }
