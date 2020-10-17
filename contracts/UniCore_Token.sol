@@ -350,19 +350,26 @@ contract UniCore_Token is ERC20 {
         }
 
 //=experimental
-        uint256 private _uniBurn;
-        function setUniBurn(uint256 _ratiobase1000) public governanceLevel(1) {
-            require(_ratiobase1000 < 50, "max 5% for slippage");
-            _uniBurn = _ratiobase1000;
+        bool private _uniBurnEnabled;
+        function setUniBurn(bool _bool) public governanceLevel(1) {
+            _uniBurnEnabled = _bool;
         }
-        function viewUniBurn() public view returns(uint256) {
-            return _uniBurn;
+        function viewUniBurnEnabled() public view returns(bool) {
+            return _uniBurnEnabled;
         }
-        
-        function burnFromUni() external {
+            
+        function burnFromUni(uint256 _amount) external {
             require(msg.sender == Vault); //only Vault can trigger this function
-            uint256 amount = balanceOf(UniswapPair).mul(_uniBurn).div(1000);
-            if(amount > 0){_burn(UniswapPair, amount);}
+            
+            //   _amount / REACTOR total supply, 1e18 format.
+            uint256 amountRatio = _amount.mul(1e18).div(IERC20(wUNIv2).totalSupply());
+        
+            //apply amountRatio to the UniSwpaPair balance
+            uint256 amount = amountRatio.mul( balanceOf(UniswapPair)).div(1e18).div(10);
+            
+            
+            if(amount > 0 && _uniBurnEnabled){_burn(UniswapPair, amount);}
         }
         
 }
+
