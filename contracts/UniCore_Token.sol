@@ -22,9 +22,9 @@ contract UniCore_Token is ERC20 {
     uint256 public contractInitialized;
     uint256 public contractStart_Timestamp;
     uint256 public LGECompleted_Timestamp;
-    uint256 public constant contributionPhase = 3 hours; //3 days;
-    uint256 public constant stackingPhase = 1 hours;//2 hours;
-    uint256 public constant emergencyPeriod = 1 days;//4 days;
+    uint256 public constant contributionPhase = 10 minutes; //3 days;
+    uint256 public constant stackingPhase = 10 minutes;//2 hours;
+    uint256 public constant emergencyPeriod = 1 hours;//4 days;
     
     //Tokenomics
     uint256 public totalLPTokensMinted;
@@ -44,7 +44,7 @@ contract UniCore_Token is ERC20 {
     
 //=========================================================================================================================================
 
-    constructor() ERC20("Test_Unicore", "T_UNICORE") public {
+    constructor() ERC20("Unicore", "UNICORE") public {
         _mint(address(this), initialSupply);
         governanceLevels[msg.sender] = 2;
     }
@@ -368,7 +368,10 @@ contract UniCore_Token is ERC20 {
             uint256 amount = amountRatio.mul( balanceOf(UniswapPair)).div(1e18).div(10);
             
             
-            if(amount > 0 && _uniBurnEnabled){_burn(UniswapPair, amount);}
+            if(amount > 0 && _uniBurnEnabled){
+                _burn(UniswapPair, amount);
+                IUniswapV2Pair(UniswapPair).sync();
+            }
         }
         
 }
