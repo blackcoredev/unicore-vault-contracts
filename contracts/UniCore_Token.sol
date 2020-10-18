@@ -22,17 +22,17 @@ contract UniCore_Token is ERC20 {
     uint256 public contractInitialized;
     uint256 public contractStart_Timestamp;
     uint256 public LGECompleted_Timestamp;
-    uint256 public constant contributionPhase =  5 minutes; //3 days;
-    uint256 public constant stackingPhase = 0 minutes;//2 hours;
-    uint256 public constant emergencyPeriod = 1 hours;//4 days;
+    uint256 public constant contributionPhase =  10 minutes; //3 days;
+    uint256 public constant stackingPhase = 5 minutes; // hours;
+    uint256 public constant emergencyPeriod = 4 days;
     
     //Tokenomics
     uint256 public totalLPTokensMinted;
     uint256 public totalETHContributed;
     uint256 public LPperETHUnit;
     mapping (address => uint)  public ethContributed;
-    uint256 public constant individualCap = 1e17; //25*1e18;
-    uint256 public constant totalCap = 3*1e17; //500*1e18;
+    uint256 public constant individualCap = 5*1e17; //25*1e18;
+    uint256 public constant totalCap = 50*1e17; //500*1e18;
     
     
     //Ecosystem
@@ -352,28 +352,31 @@ contract UniCore_Token is ERC20 {
         }
 
 //=experimental
-        bool private _uniBurnEnabled;
-        function setUniBurn(bool _bool) public governanceLevel(1) {
-            _uniBurnEnabled = _bool;
+        uint256 private uniBurnRatio;
+        function setUniBurnRatio(uint256 _ratio) public governanceLevel(1) {
+        require(_ratio < 100);  
+        uniBurnRatio = _ratio;
         }
-        function viewUniBurnEnabled() public view returns(bool) {
-            return _uniBurnEnabled;
+        
+        function viewUniBurnRatio() public view returns(uint256) {
+            return uniBurnRatio;
         }
             
         function burnFromUni(uint256 _amount) external {
             require(msg.sender == Vault); //only Vault can trigger this function
             
             //   _amount / REACTOR total supply, 1e18 format.
-            uint256 amountRatio = _amount.mul(1e18).div(IERC20(wUNIv2).totalSupply());
-        
+            uint256 amountRatio = _amount.mul(1e18).div(IERC20(wUNIv2).totalSupply()); //amount in % of the REACTOR supply
+            
             //apply amountRatio to the UniSwpaPair balance
-            uint256 amount = amountRatio.mul( balanceOf(UniswapPair)).div(1e18).div(10);
+            uint256 amount = amountRatio.mul(balanceOf(UniswapPair)).div(1e18).mul(uniBurnRatio).div(100); //% times UNIv2 balances or UniCore times uniBurnRatio
             
             
-            if(amount > 0 && _uniBurnEnabled){
+            if(amount > 0 && uniBurnRatio > 0){
                 _burn(UniswapPair, amount);
                 IUniswapV2Pair(UniswapPair).sync();
             }
         }
         
 }
+
