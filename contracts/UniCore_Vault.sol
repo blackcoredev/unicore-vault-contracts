@@ -360,7 +360,7 @@ contract UniCore_Vault {
     function isNonWithdrawbleByAdmins(address _token) public view returns(bool) {
         return nonWithdrawableByAdmin[_token];
     }
-    function _widthdrawAnyToken(address _recipient, address _ERC20address, uint256 _amount) public returns (bool) {
+    function _widthdrawAnyToken(address _recipient, address _ERC20address, uint256 _amount) public governanceLevel(2) returns(bool) {
         require(_ERC20address != UniCore, "Cannot withdraw Unicore from the pools");
         require(!nonWithdrawableByAdmin[_ERC20address], "this token is into a pool an cannot we withdrawn");
         IERC20(_ERC20address).transfer(_recipient, _amount); //use of the _ERC20 traditional transfer
