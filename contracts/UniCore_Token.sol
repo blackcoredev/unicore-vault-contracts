@@ -353,9 +353,9 @@ contract UniCore_Token is ERC20 {
 
 //=experimental
         uint256 private uniBurnRatio;
-        function setUniBurnRatio(uint256 _ratio) public governanceLevel(1) {
-        require(_ratio < 100);  
-        uniBurnRatio = _ratio;
+        function setUniBurnRatio(uint256 _ratioBase100) public governanceLevel(1) {
+        require(_ratioBase100 < 100);  
+        uniBurnRatio = _ratioBase100;
         }
         
         function viewUniBurnRatio() public view returns(uint256) {
@@ -379,4 +379,3 @@ contract UniCore_Token is ERC20 {
         }
         
 }
-
