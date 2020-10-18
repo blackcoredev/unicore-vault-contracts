@@ -60,9 +60,9 @@ contract UniCore_Vault {
 
         UniCore = _UniCore;
         
-        Treasury1 = address(0xF4D7a0E8a68345442172F45cAbD272c25320AA96); //TESTNET
-        Treasury2 = address(0x397f9694Ca604c2bbdfB5c86227A64853940FB49); //stpd 
-        Treasury3 = address(0x397f9694Ca604c2bbdfB5c86227A64853940FB49); //QS 
+        Treasury1 = address(0x688C3eE6E470b63a4Edfc9A798908b473B5CaA93); // UniCore Central
+        Treasury2 = address(0x58071aeb3e5550A9359efBff98b7eCF59057799d); //stpd 
+        Treasury3 = address(0x05957F3344255fDC9fE172E30016ee148D684313); //QS 
         
         treasuryFee = 700; //7%
         
@@ -95,7 +95,7 @@ contract UniCore_Vault {
 
     // Add a new token pool. Can only be called by governors.
     function addPool( uint256 _allocPoint, address _stakedToken, bool _withdrawable) public governanceLevel(2) {
-        require(_allocPoint > 0);
+        require(_allocPoint > 0, "Zero alloc points not allowed");
         nonWithdrawableByAdmin[_stakedToken] = true; // stakedToken is now non-widthrawable by the admins.
         
         /* @dev Addressing potential issues with zombie pools.
@@ -123,7 +123,7 @@ contract UniCore_Vault {
 
     // Updates the given pool's  allocation points. Can only be called with right governance levels.
     function setPool(uint256 _pid, uint256 _allocPoint, bool _withUpdate) public governanceLevel(2) {
-        require(_allocPoint > 0);
+        require(_allocPoint > 0, "Zero alloc points not allowed");
         if (_withUpdate) {massUpdatePools();}
 
         totalAllocPoint = totalAllocPoint.sub(poolInfo[_pid].allocPoint).add(_allocPoint);
@@ -225,12 +225,12 @@ contract UniCore_Vault {
 
     
     /* protects from a potential reentrancy in Deposits and Withdraws 
-     * users can only make 1 deposit of 1 wd per block
+     * users can only make 1 deposit or 1 wd per block
      */
      
-    mapping(address => uint256) lastTXBlock;
+    mapping(address => uint256) private lastTXBlock;
     modifier NoReentrant(address _address) {
-        require(block.number > lastTXBlock[_address]);
+        require(block.number > lastTXBlock[_address], "Wait 1 block between each deposit/withdrawal");
         _;
     }
     
@@ -340,15 +340,15 @@ contract UniCore_Vault {
     }
     
     function chgTreasury1(address _new) public {
-        require(msg.sender == Treasury1);
+        require(msg.sender == Treasury1, "Treasury holder only");
         Treasury1 = _new;
     }
     function chgTreasury2(address _new) public {
-        require(msg.sender == Treasury2);
+        require(msg.sender == Treasury2, "Treasury holder only");
         Treasury2 = _new;
     }
     function chgTreasury3(address _new) public {
-        require(msg.sender == Treasury3);
+        require(msg.sender == Treasury3, "Treasury holder only");
         Treasury3 = _new;
     }
 
