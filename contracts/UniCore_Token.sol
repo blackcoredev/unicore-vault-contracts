@@ -22,8 +22,8 @@ contract UniCore_Token is ERC20 {
     uint256 public contractInitialized;
     uint256 public contractStart_Timestamp;
     uint256 public LGECompleted_Timestamp;
-    uint256 public constant contributionPhase = 10 minutes; //3 days;
-    uint256 public constant stackingPhase = 10 minutes;//2 hours;
+    uint256 public constant contributionPhase =  5 minutes; //3 days;
+    uint256 public constant stackingPhase = 0 minutes;//2 hours;
     uint256 public constant emergencyPeriod = 1 hours;//4 days;
     
     //Tokenomics
@@ -60,7 +60,7 @@ contract UniCore_Token is ERC20 {
     
     //Pool UniSwap pair creation method (called by  initialSetup() )
     function POOL_CreateUniswapPair(address router, address factory) internal returns (address) {
-        require(contractInitialized > 0, "intialize 1st");
+        require(contractInitialized > 0, "Requires intialization 1st");
         
         uniswapRouterV2 = IUniswapV2Router02(router != address(0) ? router : 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
         uniswapFactory = IUniswapV2Factory(factory != address(0) ? factory : 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f); 
@@ -78,7 +78,7 @@ contract UniCore_Token is ERC20 {
     * can start contributing in ETH
     */
     function secondarySetup(address _Vault, address _wUNIv2) public governanceLevel(2) {
-        require(contractInitialized > 0 && contractStart_Timestamp == 0);
+        require(contractInitialized > 0 && contractStart_Timestamp == 0, "Requires Initialization and Start");
         setVault(_Vault); //also adds the Vault to noFeeList
         wUNIv2 = _wUNIv2;
         
@@ -119,8 +119,8 @@ contract UniCore_Token is ERC20 {
      */
     
     modifier ETH_ContributionPhase() {
-        require(contractStart_Timestamp > 0);
-        require(block.timestamp <= contractStart_Timestamp.add(contributionPhase));
+        require(contractStart_Timestamp > 0, "Requires contractTimestamp > 0");
+        require(block.timestamp <= contractStart_Timestamp.add(contributionPhase), "Requires contributionPhase ongoing");
         _;
     }
     
@@ -131,20 +131,22 @@ contract UniCore_Token is ERC20 {
     modifier LGE_Possible() {
          
         if(totalETHContributed < totalCap.mul(99).div(100)){ 
-        require(contractStart_Timestamp > 0);
-        require(block.timestamp > contractStart_Timestamp.add(contributionPhase));
+        require(contractStart_Timestamp > 0 , "Requires contractTimestamp > 0");
+        require(block.timestamp > contractStart_Timestamp.add(contributionPhase), "Requies contributionPhase ended");
         }
        _; 
     }
     
     modifier LGE_happened() {
-        require(LGECompleted_Timestamp > 0);
-        require(block.timestamp > LGECompleted_Timestamp);
+        require(LGECompleted_Timestamp > 0, "Requires LGE initialized");
+        require(block.timestamp > LGECompleted_Timestamp, "Requires LGE ongoing");
         _;
     }
+    
+    //UniSwap Cuck Machine: Blocks Uniswap Trades for 
     modifier Trading_Possible() {
-         require(LGECompleted_Timestamp > 0);
-         require(block.timestamp > LGECompleted_Timestamp.add(stackingPhase));
+         require(LGECompleted_Timestamp > 0, "Requires LGE initialized");
+         require(block.timestamp > LGECompleted_Timestamp.add(stackingPhase), "Requires StackingPhase ended");
         _;
     }
     
@@ -153,11 +155,11 @@ contract UniCore_Token is ERC20 {
   
     // Emergency drain in case of a bug
     function emergencyDrain24hAfterLiquidityGenerationEventIsDone() public governanceLevel(2) {
-        require(contractStart_Timestamp > 0);
+        require(contractStart_Timestamp > 0, "Requires contractTimestamp > 0");
         require(contractStart_Timestamp.add(emergencyPeriod) < block.timestamp, "Liquidity generation grace period still ongoing"); // About 24h after liquidity generation happens
         
         (bool success, ) = msg.sender.call{value:(address(this).balance)}("");
-        require(success, "Transfer failed.");
+        require(success, "ETH Transfer failed... we are cucked");
        
         ERC20._transfer(address(this), msg.sender, balanceOf(address(this)));
     }
@@ -319,7 +321,7 @@ contract UniCore_Token is ERC20 {
        
         //burns tokens from the contract (holding them)
         function burnToken(uint256 amount) public governanceLevel(1) {
-            _burn(address(this), amount);
+            _burn(address(this), amount); //only Works if tokens are on the token contract. They need to be sent here 1st. (by the team Treasury)
         }
     
     //Fees
@@ -375,4 +377,3 @@ contract UniCore_Token is ERC20 {
         }
         
 }
-
