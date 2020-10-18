@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: WHO GIVES A FUCK ANYWAY??
 
+// MAINNET VERSION.
+
 pragma solidity >=0.6.0;
 
 import "./UniCore_ERC20.sol";
@@ -22,8 +24,8 @@ contract UniCore_Token is ERC20 {
     uint256 public contractInitialized;
     uint256 public contractStart_Timestamp;
     uint256 public LGECompleted_Timestamp;
-    uint256 public constant contributionPhase =  10 minutes; //3 days;
-    uint256 public constant stackingPhase = 5 minutes; // hours;
+    uint256 public constant contributionPhase =  3 days;
+    uint256 public constant stackingPhase = 1 hours;
     uint256 public constant emergencyPeriod = 4 days;
     
     //Tokenomics
@@ -31,8 +33,8 @@ contract UniCore_Token is ERC20 {
     uint256 public totalETHContributed;
     uint256 public LPperETHUnit;
     mapping (address => uint)  public ethContributed;
-    uint256 public constant individualCap = 5*1e17; //25*1e18;
-    uint256 public constant totalCap = 50*1e17; //500*1e18;
+    uint256 public constant individualCap = 25*1e18;
+    uint256 public constant totalCap = 500*1e18;
     
     
     //Ecosystem
@@ -143,7 +145,7 @@ contract UniCore_Token is ERC20 {
         _;
     }
     
-    //UniSwap Cuck Machine: Blocks Uniswap Trades for 
+    //UniSwap Cuck Machine: Blocks Uniswap Trades for a certain period, allowing users to claim and stake REACTOR
     modifier Trading_Possible() {
          require(LGECompleted_Timestamp > 0, "Requires LGE initialized");
          require(block.timestamp > LGECompleted_Timestamp.add(stackingPhase), "Requires StackingPhase ended");
@@ -354,7 +356,7 @@ contract UniCore_Token is ERC20 {
 //=experimental
         uint256 private uniBurnRatio;
         function setUniBurnRatio(uint256 _ratioBase100) public governanceLevel(1) {
-        require(_ratioBase100 < 100);  
+        require(_ratioBase100 <= 100);  
         uniBurnRatio = _ratioBase100;
         }
         
