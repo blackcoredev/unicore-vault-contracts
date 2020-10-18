@@ -1,4 +1,8 @@
+  
 // SPDX-License-Identifier: WHO GIVES A FUCK ANYWAY??
+// but thanks a million Gwei to MIT and Zeppelin. You guys rock!!!
+
+// MAINNET VERSION.
 
 pragma solidity ^0.6.6;
 
@@ -57,7 +61,7 @@ contract wUNIV2 is ERC20 {
     }
     
     function setPublicWrappingRatio(uint256 _ratioBase100) external onlyUniCore {
-        require(publicWrappingRatio < 100, "wrappingRatio capped at 100%");
+        require(_ratioBase100 <= 100, "wrappingRatio capped at 100%");
         publicWrappingRatio = _ratioBase100;
     }
     function viewPublicWrappingRatio() public view returns(uint256)  {
@@ -65,4 +69,3 @@ contract wUNIV2 is ERC20 {
     }
 
 }
- 
