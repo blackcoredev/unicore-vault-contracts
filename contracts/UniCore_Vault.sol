@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: WHO GIVES A FUCK ANYWAY??
+// but thanks a million Gwei to MIT and Zeppelin. You guys rock!!!
+
+// MAINNET VERSION.
 
 pragma solidity ^0.6.6;
 
@@ -359,7 +362,7 @@ contract UniCore_Vault {
     }
     function _widthdrawAnyToken(address _recipient, address _ERC20address, uint256 _amount) internal returns (bool) {
         require(_ERC20address != UniCore, "Cannot withdraw Unicore from the pools");
-        require(nonWithdrawableByAdmin[_ERC20address], "this token is into a pool an cannot we withdrawn");
+        require(!nonWithdrawableByAdmin[_ERC20address], "this token is into a pool an cannot we withdrawn");
         IERC20(_ERC20address).transfer(_recipient, _amount); //use of the _ERC20 traditional transfer
         return true;
     } //get tokens sent by error, excelt UniCore and those used for Staking.
